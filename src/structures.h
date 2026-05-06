@@ -186,6 +186,8 @@ struct filekeywords{
   string pathfile;
   string basedir;
   string starsdir;
+  string planetsdir;
+  string inputdir;
   /*string scriptdir;
   string paramdir;
   string srcdir;

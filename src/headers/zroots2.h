@@ -1,15 +1,17 @@
-#ifndef ZROOTS2_H
-#define ZROOTS2_H
+#ifndef Z_R2
+#define Z_R2
 
-#include <complex>
-#include <string>
+#include<cmath>
+#include<cstdlib>
+#include<complex>
+#include<string>
 
-// Stub header for numerical recipes zroots functions
-// These are placeholder declarations for CI builds
-// The actual implementations should be provided by the user
+using namespace std;
+			
+bool laguer(complex<double> a[], int m, complex<double> *x, int *its, string s);
+double FMAX(double f1, double f2);
 
-void zroots(double a[], int m, double roots[], bool polish, const char* name = nullptr);
-void zroots(std::complex<double> a[], int m, std::complex<double> roots[], bool polish, const char* name = nullptr);
-void zroots(std::complex<double> a[], int m, std::complex<double> roots[], bool polish, const std::string& name);
+bool zroots(complex<double> a[], int m, complex<double> roots[], int polish, string s);
+  
 
-#endif // ZROOTS2_H
+#endif /* z_R2 */

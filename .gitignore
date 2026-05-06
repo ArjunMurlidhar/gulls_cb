@@ -87,3 +87,6 @@ smoke_test/gulls_general_outputs_keep_changes.zip
 smoke_test/gulls_general_outputs_reverted_generator.zip
 smoke_test/comparison*
 
+# psf and rates files
+psfs/
+rates/

@@ -1,6 +1,7 @@
 #ifndef RANDOM_HEADER
+#define RANDOM_HEADER
 
-#include<math.h>
+#include <math.h>
 
 float ran1(long *idum);
 float gasdev(long *idum);
@@ -21,13 +22,7 @@ inline double logNormal(double mean, double sigma, long* idum)
 
 inline long randint(long min, long max, long* idum)
 {
-  //inclusively between
   return min + int(ran2(idum)*(max-min+1));
 }
 
-// Random-backend metadata used to prevent accidental science runs with stubs.
-bool gulls_random_is_stub();
-const char* gulls_random_backend_name();
-
-#define RANDOM_HEADER
 #endif

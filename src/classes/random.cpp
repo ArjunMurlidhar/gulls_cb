@@ -1,6 +1,12 @@
 
 #include "random.h"
-#include <math.h>
+#include "random_backend.h"
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+#include <gsl/gsl_sf_gamma.h>
+#include <gsl/gsl_sf_gamma.h>
+#include <iostream>
+#include <cmath>
 
 #define IA 16807
 #define IM 2147483647
@@ -96,134 +102,66 @@ float ran2(long *idum){
   static long iv[NTABa];
   float temp;
 
-  if(*idum <=0){
-    if (-(*idum)<1) *idum =1;
-    else *idum = -(*idum);
-    idum2=(*idum);
-    for (j=NTABa+7;j>=0;j--){
-      k = (*idum)/IQ1a;
-      *idum=IA1a*(*idum-k*IQ1a)-k*IR1a;
-      if (*idum < 0) *idum += IM1a;
-      if (j < NTABa) iv[j] = *idum;
-    }
-    iy = iv[0];
-  }
-  k =(*idum)/IQ1a;
-  *idum=IA1a*(*idum-k*IQ1a)-k*IR1a;
-  if(*idum < 0) *idum += IM1a;
-  k = idum2/IQ2a;
-  idum2 = IA2a*(idum2-k*IQ2a)-k*IR2a;
-  if(idum2 < 0) idum2 += IM2a;
-  j = iy/NDIVa;
-  iy = iv[j]-idum2;
-  iv[j] = *idum;
-  if (iy < 1) iy += IMM1a;
-  if ((temp =AMa*iy) > RNMXa) return RNMXa;
-  else return temp;
+namespace {
+float bounded_uniform_float() {
+    constexpr float rnmx = 1.0f - 1.2e-7f;
+    const double uniform = gsl_rng_uniform(gsl_rng_fallback);
+    return (uniform >= rnmx) ? rnmx : static_cast<float>(uniform);
 }
 
-
-float ran3(long *idum){
-
-  static int inext,inextp;
-  static long ma[56];
-  static int iff = 0;
-  long mj,mk;
-  int i,ii,k;
-
-  if( *idum < 0 || iff ==0){
-    iff = 1;
-    mj=MSEED-(*idum < 0 ? -*idum : *idum);
-    mj %= MBIG;
-    ma[55] = mj;
-    mk = 1;
-    for (i=1;i<54;i++){
-      ii=(21*i) % 55;
-      ma[ii]=mk;
-      mk=mj-mk;
-      if(mk < MZ) mk += MBIG;
-      mj=ma[ii];
-    }
-    for (k=1;k<=4;k++)
-      for (i = 1;i<=55;i++) {
-	ma[i] -= ma[1+(i+30) % 55];
-	if (ma[i] < MZ) ma[i] += MBIG;
-      }
-    inext = 0;
-    inextp = 31;
-    *idum = 1;
-  }
-  if (++inext == 56) inext = 1;
-  if (++inextp == 56) inextp = 1;
-  mj=ma[inext] - ma[inextp];
-  if (mj < MZ) mj += MBIG;
-  ma[inext] = mj;
-  return mj*FAC;
+int register_random_backend() {
+    gulls_register_random_stub_backend("gsl_fallback_stub");
+    return 0;
 }
 
-double gammln(double xx)
-{
-  //returns the natural log of the Gamma function for positive xx
-  double x,y,tmp,ser;
-  //static double cof[6]={76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5};
-  //int j;
-
-  y=x=xx;
-  tmp=x+5.5;
-  tmp -= (x+0.5)*log(tmp);
-  //ser=1.000000000190015;
-  ser=1.000000000190015 + 76.18009172947146/(y+1) + -86.50532032941677/(y+2) + 24.01409824083091/(y+3) + -1.231739572450155/(y+4) + 0.1208650973866179e-2/(y+5) + -0.5395239384953e-5/(y+6);
-  //for(j=0;j<=5;j++) ser+=cof[j]/++y;
-  return -tmp+log(2.5066282746310005*ser/x);
+[[maybe_unused]] const int random_backend_registration = register_random_backend();
 }
 
-//Poisson distribution
-
-double poisson(double mean, long* idum)
-{
-  static double sqr,alxm,g,oldm=-1.0;
-  const double pi=3.1415926535897932384626433;
-  double em,t_,y;
-
-  //if(mean<=0||!finite(mean)) return 0;
-  //else 
-  if(mean<12.0) //use the direct method
-    {
-      if(mean!=oldm) //has the mean changed since the larst call?
-	{
-	  oldm=mean;
-	  g=exp(-mean); //if mean is new compute the exponentiial
-	}
-      em=-1.0;
-      t_=1.0;
-      do       //multiply uniform deviates rather than adding
-	{      //exponential ones. We don't have to take the log.
-	  ++em;
-	  t_ *= ran2(idum);
-	} while (t_ > g);
+float ran1(long *idum) {
+    init_fallback_rng();
+    // Only reseed if idum is negative (NR convention for initialization)
+    if (idum && *idum < 0) {
+        gsl_rng_set(gsl_rng_fallback, -(*idum));
+        *idum = 1; // Mark as initialized
     }
-  else     //use the rejection method
-    {
-      if(mean != oldm)  //if the mean has changed, precompute some stuff
-	{
-	  oldm=mean;
-	  sqr=sqrt(2.0*mean);
-	  alxm=log(mean);
-	  g=mean*alxm - gammln(mean+1.0);
-	}
-      do
-	{
-	  do
-	    {
-	      y=tan(pi*ran2(idum));
-	      em=sqr*y+mean;
-	    } while (em<0.0);
-	  em=floor(em);
-	  t_=0.9*(1.0+y*y)*exp(em*alxm-gammln(em+1.0)-g);
-	} while (ran2(idum) > t_);
-    }
-  return em;
+    return bounded_uniform_float();
 }
 
-bool gulls_random_is_stub() { return false; }
-const char* gulls_random_backend_name() { return "numerical_recipes"; }
+float ran2(long *idum) {
+    init_fallback_rng();
+    // Only reseed if idum is negative (NR convention for initialization)
+    if (idum && *idum < 0) {
+        gsl_rng_set(gsl_rng_fallback, -(*idum));
+        *idum = 1; // Mark as initialized
+    }
+    return bounded_uniform_float();
+}
+
+float ran3(long *idum) {
+    return ran2(idum);
+}
+
+float gasdev(long *idum) {
+    init_fallback_rng();
+    // Only reseed if idum is negative (NR convention for initialization)
+    if (idum && *idum < 0) {
+        gsl_rng_set(gsl_rng_fallback, -(*idum));
+        *idum = 1; // Mark as initialized
+    }
+    return gsl_ran_gaussian(gsl_rng_fallback, 1.0);
+}
+
+double gammln(double xx) {
+    // Use GSL's log gamma function
+    return gsl_sf_lngamma(xx);
+}
+
+double poisson(double mean, long *idum) {
+    init_fallback_rng();
+    // Only reseed if idum is negative (NR convention for initialization)
+    if (idum && *idum < 0) {
+        gsl_rng_set(gsl_rng_fallback, -(*idum));
+        *idum = 1; // Mark as initialized
+    }
+    return gsl_ran_poisson(gsl_rng_fallback, mean);
+}

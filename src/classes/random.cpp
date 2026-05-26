@@ -1,5 +1,4 @@
 #include "random.h"
-#include "random_backend.h"
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
@@ -39,13 +38,6 @@ float bounded_uniform_float() {
     const double uniform = gsl_rng_uniform(gsl_rng_fallback);
     return (uniform >= rnmx) ? rnmx : static_cast<float>(uniform);
 }
-
-int register_random_backend() {
-    gulls_register_random_stub_backend("gsl_fallback_stub");
-    return 0;
-}
-
-[[maybe_unused]] const int random_backend_registration = register_random_backend();
 }
 
 float ran1(long *idum) {

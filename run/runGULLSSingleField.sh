@@ -38,8 +38,8 @@ echo From field list: $field $idx $l $b
 if [ $(grep "^$field " $srcdir$srclist | wc -l) -eq 1 ] && [ $(grep "^$field " $lensdir$lenslist | wc -l) -eq 1 ] && [ $(grep "^$field " $sfdir$sflist | wc -l) -eq 5 ]; then
     echo Passes src/lens/sf check: $field $l $b;
     logfile=/fs/scratch/PAS3230/gulls_logs/${runname}_${subrun}_${field}.logout
-    echo $gullsbin$executable -i $paramfile -s $subrun -f $field > $logfile 2>&1
-    $gullsbin$executable -i $paramfile -s $subrun -f $field > $logfile 2>&1
+    echo $gullsbin$executable -i $paramfile -s $subrun -f $field -d > $logfile 2>&1
+    $gullsbin$executable -i $paramfile -s $subrun -f $field -d > $logfile 2>&1
     echo "GULLS field $field subrun $subrun simulations complete."
 	
     if [ $save_filenum -eq 1 ]; then

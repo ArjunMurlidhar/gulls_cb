@@ -20,12 +20,14 @@ using namespace std;
 
 string input_filename;        /* FILE HANDLING */
 string output_filename;
+string discarded_output_filename;
 string log_filename;
 string eventprefix;
 string instance;
 
 FILE *infile_ptr;                  
 ofstream outfile_ptr;
+ofstream discarded_outfile_ptr;
 ofstream logfile_ptr;
 
 char str[1100];
@@ -54,6 +56,10 @@ struct timeb mtime;
 long var = -1;
 long *idum;
 int ind;
+
+static bool discarded_header_written = false;
+static bool current_event_ready_for_param_output = false;
+static bool current_event_params_recorded = false;
 
 static void usage(int status) {
   fprintf(stderr, "Usage: gulls  -i <infile> -s <instance> {-f <field>} {-d}\n");
@@ -98,6 +104,53 @@ static VBMTimeoutError::TimeoutCategory timeout_category_from_code(int category_
 
 static bool has_vbm_event_error(const struct event& event) {
   return !event.vbm_error_message.empty();
+}
+
+static void writeDiscardedEventParamsIfReady(const char* context) {
+  if(!current_event_ready_for_param_output ||
+     current_event_params_recorded ||
+     !discarded_outfile_ptr.is_open())
+    {
+      return;
+    }
+
+  try
+    {
+      if(!discarded_header_written)
+        {
+          writeHeader(&Paramfile, &Event, &Sources, &Lenses, &Planets, discarded_outfile_ptr);
+          discarded_header_written = true;
+        }
+      writeEventParams(&Paramfile, World, &Event, &Sources, &Lenses, &Planets, discarded_outfile_ptr);
+      discarded_outfile_ptr.flush();
+      current_event_params_recorded = true;
+    }
+  catch (const std::exception& write_err)
+    {
+      cerr << "WARNING: Failed to write discarded event parameters";
+      if(context != NULL) cerr << " during " << context;
+      cerr << ": " << write_err.what() << endl;
+      if(logfile_ptr.is_open())
+        {
+          logfile_ptr << "WARNING: Failed to write discarded event parameters";
+          if(context != NULL) logfile_ptr << " during " << context;
+          logfile_ptr << ": " << write_err.what() << endl;
+          logfile_ptr.flush();
+        }
+    }
+  catch (...)
+    {
+      cerr << "WARNING: Failed to write discarded event parameters";
+      if(context != NULL) cerr << " during " << context;
+      cerr << ": unknown error" << endl;
+      if(logfile_ptr.is_open())
+        {
+          logfile_ptr << "WARNING: Failed to write discarded event parameters";
+          if(context != NULL) logfile_ptr << " during " << context;
+          logfile_ptr << ": unknown error" << endl;
+          logfile_ptr.flush();
+        }
+    }
 }
 
 int main(int argc, char *argv[]){                   /* BEGIN MAIN */
@@ -194,6 +247,7 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
   if(field<0)
     {
       output_filename = Paramfile.outputdir + Paramfile.run_name + string("_") + instance + string(".out"); //Create simulation output filename
+      discarded_output_filename = Paramfile.outputdir + Paramfile.run_name + string("_") + instance + string("_discarded.out"); //Create discarded event output filename
       log_filename = Paramfile.outputdir + Paramfile.run_name + string("_") + instance + string(".log"); //Create simulation log filename
       //sprintf(output_filename, "%s%s_%s.out", Paramfile.outputdir, Paramfile.run_name, instance);
       //sprintf(log_filename, "%s%s_%s.log", Paramfile.outputdir, Paramfile.run_name, instance);
@@ -201,12 +255,14 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
   else
     {
       output_filename = Paramfile.outputdir + Paramfile.run_name + string("_") + instance + string("_") + to_string(field) + string(".out"); //Create simulation output filename
+      discarded_output_filename = Paramfile.outputdir + Paramfile.run_name + string("_") + instance + string("_") + to_string(field) + string("_discarded.out"); //Create discarded event output filename
       log_filename = Paramfile.outputdir + Paramfile.run_name + string("_") + instance + string("_") + to_string(field) + string(".log"); //Create simulation log filename
       //sprintf(output_filename, "%s%s_%s_%d.out", Paramfile.outputdir, Paramfile.run_name, instance,field);   /* Create simulation output filename */
       //sprintf(log_filename, "%s%s_%s_%d.log", Paramfile.outputdir, Paramfile.run_name, instance,field);   /* Create simulation log filename */
     }
 
   outfile_ptr.open(output_filename.c_str());
+  discarded_outfile_ptr.open(discarded_output_filename.c_str());
   logfile_ptr.open(log_filename.c_str());
 
 
@@ -219,6 +275,18 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
   else 
     {
       sprintf(str,"Output file: %s",output_filename.c_str());
+      fmtline(str,2*WIDTH,"READY");
+    }
+
+  if (!discarded_outfile_ptr)
+    {
+      sprintf(str,"Unable to open discarded output file: %s",discarded_output_filename.c_str());
+      fmtline(str,2*WIDTH,"FAILED");
+      exit(1);
+    }
+  else
+    {
+      sprintf(str,"Discarded output file: %s",discarded_output_filename.c_str());
       fmtline(str,2*WIDTH,"READY");
     }
 
@@ -384,6 +452,8 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
   /* For every Galaxy model event */
   for(idx=0; idx<int(Planets.data.size()); idx++)
     {
+      current_event_ready_for_param_output = false;
+      current_event_params_recorded = false;
       cout << string(80,'#') << endl;
       cout << string(80,'#') << endl;
       cout << string(80,'#') << endl;
@@ -394,6 +464,7 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
       clock_gettime(CLOCK_REALTIME,&tstart);
       buildEvent(&Event, World, starfield, starfieldData,  
 				 &Paramfile, &Sources, &Lenses, idx, idum);
+      current_event_ready_for_param_output = true;
     
       //getPlanetvals(&Event, World, &Paramfile, &Sources, &Lenses, &Planets);
       clock_gettime(CLOCK_REALTIME,&tend);
@@ -449,6 +520,7 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
                 }
               logfile_ptr.flush();
             }
+          writeDiscardedEventParamsIfReady("VBM fatal exit");
           return exit_code;
         }
 
@@ -502,7 +574,15 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
         }
 
       //Write out the events parameters and data to the appropriate file
-      if(idx==0) writeHeader(&Paramfile, &Event, &Sources, &Lenses, &Planets, outfile_ptr);
+      if(idx==0)
+        {
+          writeHeader(&Paramfile, &Event, &Sources, &Lenses, &Planets, outfile_ptr);
+          if(!discarded_header_written)
+            {
+              writeHeader(&Paramfile, &Event, &Sources, &Lenses, &Planets, discarded_outfile_ptr);
+              discarded_header_written = true;
+            }
+        }
       if(Event.lcerror || Event.deterror)
 	      {
 	        if(Event.lcerror)
@@ -510,12 +590,15 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
 	        if(Event.deterror)
             sprintf(str,"\nDiscarding event %d (Failed detection criteria)", idx);
 	        fmtline(str,WIDTH,"OKAY"); 
-		        writeEventParams(&Paramfile, World, &Event, &Sources, &Lenses, &Planets, logfile_ptr);
+		        writeEventParams(&Paramfile, World, &Event, &Sources, &Lenses, &Planets, discarded_outfile_ptr);
+            current_event_params_recorded = true;
 	      }
       else //otherwise
 	      {
 	         writeEventParams(&Paramfile, World, &Event, &Sources, &Lenses, &Planets, outfile_ptr);
+           current_event_params_recorded = true;
 	      }
+      current_event_ready_for_param_output = false;
       clock_gettime(CLOCK_REALTIME,&tend);
       nsec = tend.tv_nsec - tstart.tv_nsec;
       tio += double((tend.tv_sec - tstart.tv_sec) - (nsec<0?1:0))
@@ -575,6 +658,7 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
         }
       logfile_ptr.flush();
     }
+    writeDiscardedEventParamsIfReady("unhandled VBM timeout");
     return exit_code;
   } catch (const std::exception& err) {
     cerr << "FATAL: Unhandled exception: " << err.what() << endl;
@@ -582,6 +666,7 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
       logfile_ptr << "FATAL: Unhandled exception: " << err.what() << endl;
       logfile_ptr.flush();
     }
+    writeDiscardedEventParamsIfReady("unhandled exception");
     return 1;
   }
   

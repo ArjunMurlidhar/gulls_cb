@@ -10,4 +10,5 @@ Broadly follows the convention laid out by Luhn et al 2016:
 
 This parametrization ensures that parameters don't have to be rescaled or shifted when moving from a system with just the binary stars to one with a planet orbiting a star with the combined mass of the two stars at the origin.
 
-**Note:** VBMicrolensing scales all parameters to the Einstein ring for unitary mass. To implement our conventions with VBM, we need to set the total mass of the binary to 1.
+**Note:** VBMicrolensing scales all parameters to the Einstein ring for unitary mass for multiple lenses. To implement our conventions with VBM when generating triple lens light curves, we need to set the total mass of the binary to 1. This convention is used when MultiMa0 or MultiMag2 functions are called.
+For binary lenses, VBM defines the origin at the barycenter of the system and defines all parameters in terms of the Einstein ring for the total mass of the binary lens system. This convention is used when BinaryMag0 or BinaryMag2 functions are called.

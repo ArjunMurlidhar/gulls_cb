@@ -19,116 +19,87 @@ We will use gulls_general for these simulations. We will only input planet files
 
 ### Circumbinary Detection Criteria
 
-For small binary separations, if the planet is not in a resonant configuration (not on the critical curve of the binary), the caustics of the circumbinary can be approximated as individual binary and shifted planet caustics. For wider binaries, this is true only if the planet is much further away from the binary critical curve, but even then, the agreement is not exact. 
-
-We can define our detection criteria as a chi-squared threshold to detect both binary and planetary perturbations in this separable case. For resonant or overlapping caustics, we can say that the circumbinary will be detectable if the perturbation due to the smaller of the two caustic components is detectable.
+The caustics and light curves of a circumbinary planet can be approximated as a superpositon of a binary star lens and an effective single-star-planet lens. We can define our detection criteria as a chi-squared threshold to detect both binary and planetary perturbations in this separable case. 
 
 ## Light curve generation and fitting
 
-For each circumbinary planet event, we will need to generate two binary lens light curves - one for a system that only has the binary stars, and one for a system where the planet orbits a single star with the combined mass of the binary located at the center of mass of the binary star system (both for the same source trajectory). The parameters of this planet are shifted with respect to the actual circumbinary planet to ensure the planetary caustic overlaps with the planet component of the circumbinary caustic (see below for the exact transformation).
+For each circumbinary planet event, we will need to generate two binary lens light curves - one for a system that only has the binary stars, and one for the effective single-star-planet lens (see below for the exact transformation).
 
 These two light curves are fit with single lens models (PSPL or FSPL) and the chi-squared values for both the binary star light curve and the planet light curve are noted. In post-processing, a chi-squared cut is applied to determine if both the binary star light curve feature and planet light curve feature are detected to determine if the circumbinary system was detected.
 
 **We will need modify the light curve generator and light curve fitting module of gulls_general to implement this.**
 
-## Shifted planet position
+## Superposition Principle
 
-Luhn et al 2016: "Caustic Structures and Detectability of Circumbinary Planets in Microlensing" showed that the position of the planetary component of the circumbinary caustic can be reproduced by finding the mass weighted average of the positions of the planetary caustics produced by the planet orbiting each of the two stars in the binary individually. The code below implements this logic to find the shifted position of the planet:
+The circumbinary system can be approximated as a superposition of two binary lens systems:
 
+1) Binary star system without the planet
+
+2) An effective single-star-planet system where the star has a mass equal to the combined mass of the two binary stars
+
+The parameters of the effective single-star-planet system can be calculated as follows. The separation between the planet and effective host is calculated by matching the total shear at the planet position to the shear due to the effective host at the planet position. The position of the effective host is found such that the caustic location of this system matches the planetary component of the circumbinary caustic. The location of this planetary component is such that a source at this caustic produces an image at the location of the planet under lensing due to the binary stars. 
+
+### Recipe for calculating the superposition:
+
+Assuming that the circumbinary parameters are defined according to the defined conventions (in units of the stellar binary Einstein ring), define: $\epsilon_1 = 1/(1+q_b)$, $\epsilon_2 = q_b/(1+q_b)$, $z_1 = -\epsilon_2 s_b$, $z_2 = \epsilon_1 s_b$, and $z_p = s_p e^{i\psi}$.
+
+1. Evaluate host deflection and shear at the planet position at $z_p$ and pass effective parameters to VBM (in barycentric coordinates,  normalized to Einstein ring for the total mass of the effective system).
+
+$$
+\zeta_0 = z_p - \sum_{j=1}^{2} \frac{\epsilon_j}{\bar{z}_p - \bar{z}_j}, \qquad \gamma_p = \sum_{j=1}^{2} \frac{\epsilon_j}{(\bar{z}_p - \bar{z}_j)^2}, \qquad g = |\gamma_p|, \quad \psi_{\text{eff}} = \frac{1}{2}\arg \gamma_p \quad (\text{closest to } \psi).
+$$
+
+Parameters that can be passed to VBM (in VBM coordinate system):
+
+
+$$\boxed{s = \frac{1}{\sqrt{(1+q_p)g}}, \qquad q = q_p, \qquad \rho_{\text{VB}} = \frac{\rho}{\sqrt{1+q_p}}.}$$
+
+
+```python
+def effective_parameters(sb, qb, sp, qp, psi):
+    """Angles: radians. Lengths: Einstein radius of M1+M2.
+    qb = M2/M1; qp = mp/(M1+M2).
+    """
+    m1, m2 = 1/(1 + qb), qb/(1 + qb)
+    zp = sp * np.exp(1j*psi)
+    d1, d2 = np.conj(zp + m2*sb), np.conj(zp - m1*sb)
+
+    caustic_reference = zp - m1/d1 - m2/d2
+    gamma = m1/d1**2 + m2/d2**2
+    if abs(gamma) == 0:
+        raise ValueError("Zero shear has no finite effective separation.")
+    s_eff = abs(gamma)**-0.5 #This is still in units of the binary lens Einstein ring
+    psi_eff = np.angle(gamma)/2
+    print("psi_eff", np.rad2deg(psi_eff))
+    psi_eff += np.pi*np.round((psi - psi_eff)/np.pi)
+
+    host_position = (caustic_reference - np.exp(1j*psi_eff)*(s_eff - 1/s_eff)) #In units of binary lens Einstein ring
+    return s_eff, qp, psi_eff, host_position
 ```
-#Function to calculate planet offset required to match the planetary part of the circumbinary caustic
+2. Given a source trajectory $\zeta(t) = y_1(t) + iy_2(t)$, convert it to the barycentric frame of the effective single-star-planet lens in the standard VBM geometry of a binary lens, and compute magnification using BinaryMag2. 
 
-def calculate_planet_offset(s3, q3, psi_deg, s2, q2):
 
-	psi = np.deg2rad(psi_deg)
-	
-	  
-	
-	# Masses normalized so that total binary mass = 1
-	
-	m1 = 1.0 / (1.0 + q2)
-	
-	m2 = q2 * m1
-	
-	m3 = q3 * (m1 + m2)
-	
-	  
-	
-	# Lens positions (binary along x, planet offset by s3 at angle psi)
-	
-	z1x = -q2 * s2 / (1.0 + q2)
-	
-	z2x = s2 / (1.0 + q2)
-	
-	z3x = s3 * np.cos(psi)
-	
-	z3y = s3 * np.sin(psi)
-	
-	  
-	
-	#Position of planet wrt mass 1 and mass 2
-	
-	pA = (z3x - z1x, z3y)
-	
-	pB = (z3x - z2x, z3y)
-	
-	alphaA = np.arctan2(pA[1], pA[0])
-	
-	alphaB = np.arctan2(pB[1], pB[0])
-	
-	sA = np.sqrt(pA[0]**2 + pA[1]**2)
-	
-	sB = np.sqrt(pB[0]**2 + pB[1]**2)
-	
-	qA = m3/m1
-	
-	qB = m3/m2
-	
-	#position of planet caustic due to mass 1 and mass 2 RELATIVE TO THE STARS
-	
-	rA = ((1-qA)/(1+qA))*(sA - (1./sA))
-	
-	rB = ((1-qB)/(1+qB))*(sB - (1./sB))
-	
-	#Positions in our coordinate system
-	
-	rc1 = (z1x + rA*np.cos(alphaA), rA*np.sin(alphaA))
-	
-	rc2 = (z2x + rB*np.cos(alphaB), rB*np.sin(alphaB))
-	
-	#print(rc1, rc2)
-	
-	  
-	
-	#Position of circumbinary planet caustic in our coordinate system
-	
-	rcb = (1./(1+q2))*np.array(rc1) + (q2/(1+q2))*np.array(rc2)
-	
-	#Since we are placing the single star at the origin, the caustic position relative to the star is the same as the caustic position in our coordinate system
-	
-	rcb_norm = np.sqrt(rcb[0]**2 + rcb[1]**2)
-	
-	c = rcb_norm*(1 + q3)/(1 - q3)
-	
-	if s3 < 1:
-	
-	splanet = np.abs((c - np.sqrt(c**2 + 4))/2)
-	
-	psi_new = np.arctan2(-rcb[1], -rcb[0])
-	
-	else:
-	
-	splanet = (c + np.sqrt(c**2 + 4))/2
-	
-	psi_new = np.arctan2(rcb[1], rcb[0])
-	
-	#print(psi_new)
-	
-	if psi_new < 0:
-	
-	psi_new += 2*np.pi
-	
-	psi_new_deg = np.rad2deg(psi_new)
-	
-	return splanet, psi_new_deg
+$$\boxed{y(t) = \frac{e^{-i\psi_{\text{eff}}}[\zeta(t) - \zeta_0]}{\sqrt{1+q_p}} + \frac{s - s^{-1}}{1+q_p}, \qquad \tilde{y}_1 = \text{Re}[y(t)], \quad \tilde{y}_2 = \text{Im}[y(t)].}$$
+
+
+Here, $\zeta(t)$ and $\zeta_0$ are defined in units of the binary Einstein ring and $s$ is defined in units of the Einstein ring of the single-star-planet system. $\tilde{\zeta}(t)= \tilde{y}_1 + i\tilde{y}_2$ is the source position passed to BinaryMag2 to calculate the magnification. The python implementation of this can be found below:
+
+```python
+def to_vbm_frame(z, s_eff, q, psi_eff, host_position):
+    #Rotate from our coordinate system to the VBM coordinate system, shift origin to the barycenter, and scale by the total mass Einstein radius
+    z_vbm = 1/np.sqrt(1+q)*(np.exp(-1j*psi_eff)*(z - host_position) + q*s_eff/(1+q))
+    return z_vbm
+
+def calculate_planet_mag(y1, y2, s_eff, q, psi_eff, host_position, rho):
+    vbm = VBMicrolensing.VBMicrolensing()
+    rho_vbm = rho/np.sqrt(1+q)
+    z = y1 + 1j*y2
+    z_vbm = to_vbm_frame(z, s_eff, q, psi_eff, host_position)
+    y1_vbm = z_vbm.real
+    y2_vbm = z_vbm.imag
+    mag = vbm.BinaryMag2(s_eff, q, y1_vbm, y2_vbm, rho_vbm)
+    return mag
 ```
+
+3. Magnifications for the stellar binary system can be computed by simply removing the planet. This does not require any rescaling of parameters as long as the recommended coordinate system and parameter convention is followed.
+

@@ -103,6 +103,8 @@ def _extract_summary_metrics(out_file: Path) -> Dict[Tuple[int, int, int], Dict[
 def gather_case_metrics(out_files: Sequence[Path]) -> Dict[Tuple[int, int, int], Dict[str, float]]:
     aggregated: Dict[Tuple[int, int, int], Dict[str, float]] = {}
     for out_file in out_files:
+        if "discarded" in out_file.name:
+            continue
         aggregated.update(_extract_summary_metrics(out_file))
     return aggregated
 

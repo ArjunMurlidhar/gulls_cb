@@ -93,6 +93,18 @@ void buildEvent(struct event *Event, struct obsfilekeywords World[],
   compute_u0(Paramfile, World, Event, idum);
 
   Event->peakpoint=0;
+  Event->skip_lc=0;
+  Event->bad_scenario=0;
+  Event->Atrue_bin.clear();
+  Event->Atrue_pl.clear();
+  Event->Atrueerr_bin.clear();
+  Event->Atrueerr_pl.clear();
+  Event->Aobs_bin.clear();
+  Event->Aobs_pl.clear();
+  Event->Aerr_bin.clear();
+  Event->Aerr_pl.clear();
+  Event->Afit_bin.clear();
+  Event->Afit_pl.clear();
 
   if(Paramfile->verbosity>=2)
     {
@@ -1131,6 +1143,8 @@ void setupObsGroups(struct filekeywords *Paramfile, struct event *Event)
   Event->flatchi2.resize(Event->obsgroups.size());
   Event->flag_needFS.resize(Event->obsgroups.size());
   Event->flatlc.resize(Event->obsgroups.size());
+  Event->chi2_bin.assign(Event->obsgroups.size(), 0.0);
+  Event->chi2_pl.assign(Event->obsgroups.size(), 0.0);
   Event->obsgroupoutput.clear();
   Event->obsgroupoutput.resize(Event->obsgroups.size(),string(""));
   Event->obsgroupoutputheader.clear();

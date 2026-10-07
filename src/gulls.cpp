@@ -525,10 +525,12 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
         }
 
       // Any non-zero lcerror means downstream photometry/output should not run.
-      // These stages assume valid magnification vectors.
+      // Intentional skip_lc also skips photometry/detection/LC files, but params
+      // still go to the main outfile when lcerror==0.
       const bool lightcurve_failed = (Event.lcerror != 0);
+      const bool skip_downstream = lightcurve_failed || (Event.skip_lc != 0);
 
-      if(!lightcurve_failed)
+      if(!skip_downstream)
         {
           /* Perform photometry */
           if(Paramfile.verbosity) {printf("photometry\n"); fflush(stdout);}
@@ -569,7 +571,10 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
         }
       else if(Paramfile.verbosity)
         {
-          printf("lightcurve generation failed (lcerror=%d); skipping photometry, detection, and output steps\n", Event.lcerror);
+          if(Event.skip_lc)
+            printf("lightcurve generation skipped (skip_lc=1, bad_scenario=%d); skipping photometry, detection, and LC output\n", Event.bad_scenario);
+          else
+            printf("lightcurve generation failed (lcerror=%d); skipping photometry, detection, and output steps\n", Event.lcerror);
           fflush(stdout);
         }
 

@@ -218,7 +218,7 @@ void writeHeader(struct filekeywords* Paramfile, struct event *Event, struct slc
     }
 
   //Binary/system type
-  ofile << "Moons Circumbinary DistantBinary MixedBinary "; 
+  ofile << "Moons Circumbinary DistantBinary MixedBinary SkipLC BadScenario "; 
   
   //simulation details
   ofile << "NumObsGroups" << " " << "ErrorFlag" << " ";
@@ -232,6 +232,8 @@ void writeHeader(struct filekeywords* Paramfile, struct event *Event, struct slc
       ofile << "ObsGroup_" << obsgroup << "_" << "flatchi2" << " ";
       ofile << "ObsGroup_" << obsgroup << "_" << "FiniteSourceflag" << " ";
       ofile << "ObsGroup_" << obsgroup << "_" << "chi2" << " ";
+      ofile << "ObsGroup_" << obsgroup << "_" << "chi2_bin" << " ";
+      ofile << "ObsGroup_" << obsgroup << "_" << "chi2_pl" << " ";
       ofile << Event->obsgroupoutputheader[obsgroup] << " ";
     }
   
@@ -499,18 +501,30 @@ void writeEventParams(struct filekeywords* Paramfile, struct obsfilekeywords Wor
     }
 
   ofile << Event->moons << " " << Event->circumbinary << " " << Event->distantbinary << " " << Event->mixedbinary << " ";
+  ofile << Event->skip_lc << " " << Event->bad_scenario << " ";
 
   
   //simulation details
-  ofile << int(Event->obsgroups.size()) << " " << (Event->lcerror==0?Event->allsat + 2*(!Event->nepochs):Event->lcerror) << " ";
+  ofile << int(Event->obsgroups.size()) << " "
+	<< (Event->skip_lc ? 0 : (Event->lcerror==0?Event->allsat + 2*(!Event->nepochs):Event->lcerror)) << " ";
 
 
   //chi^2 results
   for(int obsgroup=0;obsgroup<int(Event->obsgroups.size());obsgroup++)
     {
       //what is being done here? 
-      ofile << Event->flatlc[obsgroup] << " " << Event->flatchi2[obsgroup] << " " << Event->flag_needFS[obsgroup] << " " << 
-	(!Event->flag_needFS[obsgroup]?Event->PSPL[obsgroup].chisq:Event->FSPL[obsgroup].chisq) << " ";
+      if(Event->skip_lc)
+	{
+	  ofile << "0 0 0 0 0 0 ";
+	}
+      else
+	{
+	  ofile << Event->flatlc[obsgroup] << " " << Event->flatchi2[obsgroup] << " " << Event->flag_needFS[obsgroup] << " " << 
+	    (!Event->flag_needFS[obsgroup]?Event->PSPL[obsgroup].chisq:Event->FSPL[obsgroup].chisq) << " ";
+	  double chi2_bin = (obsgroup < int(Event->chi2_bin.size()) ? Event->chi2_bin[obsgroup] : 0.0);
+	  double chi2_pl = (obsgroup < int(Event->chi2_pl.size()) ? Event->chi2_pl[obsgroup] : 0.0);
+	  ofile << chi2_bin << " " << chi2_pl << " ";
+	}
       ofile << Event->obsgroupoutput[obsgroup] << " ";
     }
   

@@ -6,6 +6,8 @@
 #include "ephem.h"
 #include "coords.h"
 #include "argsort.h"
+#include "cbEffectiveLens.h"
+#include "integerPowers.h"
 
 
 #include<time.h>
@@ -17,6 +19,7 @@
 #include<numeric>
 #include<sys/stat.h>
 #include<cmath>
+#include<complex>
 //#include<thread>
 //#include<chrono>
 
@@ -72,6 +75,19 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 
   Event->lcerror=0;
   Event->deterror=0;
+  Event->skip_lc=0;
+  Event->bad_scenario=0;
+  Event->detected=0;
+  Event->Atrue_bin.clear();
+  Event->Atrue_pl.clear();
+  Event->Atrueerr_bin.clear();
+  Event->Atrueerr_pl.clear();
+  Event->Aobs_bin.clear();
+  Event->Aobs_pl.clear();
+  Event->Aerr_bin.clear();
+  Event->Aerr_pl.clear();
+  Event->Afit_bin.clear();
+  Event->Afit_pl.clear();
   Event->vbm_error_category = static_cast<int>(VBMTimeoutError::TimeoutCategory::Unknown);
   Event->vbm_error_source.clear();
   Event->vbm_error_message.clear();
@@ -760,22 +776,61 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
     }
 
   
-  if(bad_scenario>0)
+  Event->bad_scenario = bad_scenario;
+  // Generate magnification only for stable P-type circumbinary events.
+  // Everything else is skip_lc with lcerror=0; params still go to the main outfile.
+  if(!(Event->circumbinary==1 && bad_scenario==0))
     {
-      Event->lcerror = 9000 + bad_scenario;
+      Event->skip_lc = 1;
+      Event->lcerror = 0;
       Event->detected = 0;
       Event->deterror = 0;
       if(Paramfile->verbosity >= 1)
 	{
-	  cout << "Lightcurve generation skipped due to a bad scenario, event " << Event->id << ", code " << bad_scenario << "" << endl;
+	  cout << "Lightcurve generation skipped (not stable P-type), event " << Event->id
+	       << ", circumbinary=" << Event->circumbinary
+	       << ", bad_scenario=" << bad_scenario << endl;
 	}
       if(logfile_ptr.good())
 	{
-	  logfile_ptr << "Lightcurve generation skipped due to a bad scenario, event " << Event->id << ", code " << bad_scenario << "" << endl;
+	  logfile_ptr << "Lightcurve generation skipped (not stable P-type), event " << Event->id
+		      << ", circumbinary=" << Event->circumbinary
+		      << ", bad_scenario=" << bad_scenario << endl;
 	}
+      delete[] lens_parameters;
       return;
     }
 
+  int star2_idx = -1;
+  int planet_idx = -1;
+  for(int i=0;i<int(Event->p_orbtype.size());i++)
+    {
+      if(Event->p_orbtype[i]==-1) star2_idx = i+1;
+      else if(Event->p_orbtype[i]!=3 && Event->p_mass[i]>0.0) planet_idx = i+1;
+    }
+  if(star2_idx<0 || planet_idx<0 || star2_idx>=nlens || planet_idx>=nlens)
+    {
+      Event->skip_lc = 1;
+      Event->lcerror = 0;
+      Event->detected = 0;
+      Event->deterror = 0;
+      if(Paramfile->verbosity >= 1)
+	{
+	  cout << "Lightcurve generation skipped (missing stellar companion or planet index), event " << Event->id << endl;
+	}
+      delete[] lens_parameters;
+      return;
+    }
+
+  const double M1 = Lenses->data[ln][Lenses->MASS];
+  const double M2 = Event->p_mass[star2_idx-1];
+  const double Mp = Event->p_mass[planet_idx-1];
+  const double qb = M2/M1; // M2/M1, VBM style
+  const double qp = Mp/(M1+M2);
+  const double thE_scale = std::sqrt((M1+M2)/M1); // catalog θ_E → binary-total-mass θ_E
+
+  Event->Atrue_bin.assign(Event->nepochs, 1.0);
+  Event->Atrue_pl.assign(Event->nepochs, 1.0);
 
   if(Paramfile->verbosity>=1) cout << "Starting lightcurve generation" << endl;
   
@@ -897,280 +952,151 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
       //Finally ready to compute magnifications
       vector<double> astro_x(nsrc,0.0);
       vector<double> astro_y(nsrc,0.0);
+      vector<double> mu_bin(nsrc, 1.0);
+      vector<double> mu_pl(nsrc, 1.0);
 
-      if(nlens==1)
+      // Binary CoM in the same frame as xl/yl (full-system CoM, catalog θ_E)
+      const double x_bin_com = (M1 * xl[0] + M2 * xl[star2_idx]) / (M1 + M2);
+      const double y_bin_com = (M1 * yl[0] + M2 * yl[star2_idx]) / (M1 + M2);
+
+      auto cb_input_error = [&]()
 	{
-	  if(!warned_single_lens_nonzero_origin)
+	  Event->lcerror = LCGEN_INPUT_ERR;
+	  Event->detected = 0;
+	  Event->deterror = 0;
+	  Event->outputthis = 0;
+	  if(Paramfile->verbosity >= 1)
 	    {
-	      // whether we have COM or lens 1 at the origin of the event-frame, they would
-	      // both mean the same thing for the single-lens case. 
-	      // VBM's astrometry is scalar for the single lens case, so it assumes the lens 
-	      // is at the origin of the event frame. 
-	      const double lens_origin_tol = 1e-12;
-	      if(fabs(xl[0]) > lens_origin_tol || fabs(yl[0]) > lens_origin_tol)
-		{
-		  cerr << "WARNING: single-lens ESPL assumes lens at origin (xl=yl=0), but got "
-		       << "xl=" << xl[0] << ", yl=" << yl[0]
-		       << " for event " << Event->id
-		       << " at epoch " << Event->epoch[idx] << endl;
-		  warned_single_lens_nonzero_origin = true;
-		}
+	      cout << "Lightcurve generation halted due to bad BinaryMag2 inputs, event " << Event->id << endl;
 	    }
-	  for(int is=0;is<nsrc;is++)
+	  if(logfile_ptr.good())
 	    {
-	      if(is==0) rho = Event->rs;	
-	      else rho = Event->scomp_rs[is-1];
-	      u = qAdd(xs[is],ys[is]);  //magnitude of the relative source-lens position vector (per source per epoch)
-	      bool used_vbm_astrometry = false;
-	      if(Paramfile->skip_magnification==0)
+	      logfile_ptr << Event->id << " Lightcurve generation halted due to bad BinaryMag2 inputs" << endl;
+	    }
+	  delete[] lens_parameters;
+	};
+
+      if(!std::isfinite(thE_scale) || thE_scale <= 0.0 || !std::isfinite(qb) || !std::isfinite(qp)
+	 || qb <= 0.0 || qp <= 0.0)
+	{
+	  cb_input_error();
+	  return;
+	}
+
+      // Source in full-system CoM (catalog θ_E), then binary CoM, then binary-total-mass θ_E
+      const double x1_thE = (xl[0] - x_bin_com) / thE_scale;
+      const double y1_thE = (yl[0] - y_bin_com) / thE_scale;
+      const double x2_thE = (xl[star2_idx] - x_bin_com) / thE_scale;
+      const double y2_thE = (yl[star2_idx] - y_bin_com) / thE_scale;
+      const double xp_thE = (xl[planet_idx] - x_bin_com) / thE_scale;
+      const double yp_thE = (yl[planet_idx] - y_bin_com) / thE_scale;
+      const double sb = qAdd(x2_thE - x1_thE, y2_thE - y1_thE);
+
+      // Python/Luhn frame: M1 at −x, M2 at +x (do not swap qb)
+      const double rot_b = atan2(y2_thE, x2_thE);
+      const double cr_b = cos(-rot_b);
+      const double sr_b = sin(-rot_b);
+      const double xp_axis = cr_b * xp_thE - sr_b * yp_thE;
+      const double yp_axis = sr_b * xp_thE + cr_b * yp_thE;
+      const double sp = qAdd(xp_axis, yp_axis);
+      const double psi = atan2(yp_axis, xp_axis);
+
+      EffectiveLensParams eff;
+      if(!cb_effective_parameters(sb, qb, sp, qp, psi, &eff))
+	{
+	  cb_input_error();
+	  return;
+	}
+
+      // LC A: VBM wants the heavier star at x<0, so swap labels if qb>1
+      double q_vbm = qb;
+      double rot_a = rot_b;
+      if(qb > 1.0)
+	{
+	  q_vbm = 1.0 / qb;
+	  rot_a = atan2(y1_thE, x1_thE);
+	}
+      const double cr_a = cos(-rot_a);
+      const double sr_a = sin(-rot_a);
+      const double cr_a_inv = cos(rot_a);
+      const double sr_a_inv = sin(rot_a);
+
+      for(int is=0;is<nsrc;is++)
+	{
+	  if(is==0) rho = Event->rs;
+	  else rho = Event->scomp_rs[is-1];
+
+	  const double xs_com = xs[is] + l_delta[0];
+	  const double ys_com = ys[is] + l_delta[1];
+	  const double xs_thE = (xs_com - x_bin_com) / thE_scale;
+	  const double ys_thE = (ys_com - y_bin_com) / thE_scale;
+	  const double rho_bin = rho / thE_scale;
+
+	  const double y1_a = cr_a * xs_thE - sr_a * ys_thE;
+	  const double y2_a = sr_a * xs_thE + cr_a * ys_thE;
+
+	  const double zeta_x = cr_b * xs_thE - sr_b * ys_thE;
+	  const double zeta_y = sr_b * xs_thE + cr_b * ys_thE;
+	  const std::complex<double> z_src(zeta_x, zeta_y);
+	  const std::complex<double> z_vbm = cb_to_vbm_frame(z_src, eff.s_eff, qp, eff.psi_eff, eff.host_position);
+	  const double y1_pl = z_vbm.real();
+	  const double y2_pl = z_vbm.imag();
+	  const double rho_VB = rho_bin / sqrt(1.0 + qp);
+
+	  bool used_vbm_astrometry = false;
+	  if(Paramfile->skip_magnification==0)
+	    {
+	      if(!std::isfinite(sb) || !std::isfinite(q_vbm) || !std::isfinite(y1_a) || !std::isfinite(y2_a)
+		 || !std::isfinite(rho_bin) || sb <= 0.0 || q_vbm <= 0.0 || rho_bin < 0.0
+		 || !std::isfinite(eff.s_eff) || !std::isfinite(y1_pl) || !std::isfinite(y2_pl)
+		 || !std::isfinite(rho_VB) || eff.s_eff <= 0.0 || rho_VB < 0.0)
 		{
-		  mu[is] = Event->vbm->ESPLMag2(u, rho);  //calculate the single-lens magnification (per source per epoch)
-		  Event->VBM_function = "ESPLMag2";  
-		  if(handle_vbm_api_error("ESPLMag2", Paramfile, Event, logfile_ptr, Event->vbm)) return;
+		  cb_input_error();
+		  return;
+		}
+
+	      mu_bin[is] = Event->vbm->BinaryMag2(sb, q_vbm, y1_a, y2_a, rho_bin);
+	      Event->VBM_function = "BinaryMag2";
+	      if(handle_vbm_api_error("BinaryMag2", Paramfile, Event, logfile_ptr, Event->vbm))
+		{
+		  delete[] lens_parameters;
+		  return;
+		}
+
+	      if(Paramfile->astrometry_on)
+		{
+		  const double cx_bin = Event->vbm->astrox1;
+		  const double cy_bin = Event->vbm->astrox2;
+		  const double cx_ecl = (cr_a_inv * cx_bin - sr_a_inv * cy_bin) * thE_scale + x_bin_com;
+		  const double cy_ecl = (sr_a_inv * cx_bin + cr_a_inv * cy_bin) * thE_scale + y_bin_com;
+		  astro_x[is] = cx_ecl;
+		  astro_y[is] = cy_ecl;
+		  Event->astrox1_raw[is][idx] = cx_bin;
+		  Event->astrox2_raw[is][idx] = cy_bin;
 		  used_vbm_astrometry = true;
 		}
-	      else mu[is]=1.0;
-		  
-	      // ESPLMag2 provides a radial centroid for single-lens geometry.
-	      // Project that radial value onto the source direction in event-frame.
-	      if(Paramfile->astrometry_on && used_vbm_astrometry && u>1e-12)
+
+	      mu_pl[is] = Event->vbm->BinaryMag2(eff.s_eff, qp, y1_pl, y2_pl, rho_VB);
+	      if(handle_vbm_api_error("BinaryMag2", Paramfile, Event, logfile_ptr, Event->vbm))
 		{
-		  astro_x[is] = Event->vbm->astrox1 * xs[is]/u;  // Project the radial centroid onto the source direction in event-frame.
-		  astro_y[is] = Event->vbm->astrox1 * ys[is]/u;  // the flux weighted source-image centroid is in the direction of the 
-		  // source from the lens, so we can use the source coordinates to get the direction of the centroid shift and apply it 
-		  // to the radial value of the centroid shift to get the astrometric centroid in ecliptic coordinates.
+		  delete[] lens_parameters;
+		  return;
 		}
-	      else
-		{
-		  astro_x[is] = xs[is];  // if the lensing isn't significant, the "image" centroid is just the source position
-		  astro_y[is] = ys[is];  //pr source per epoch, where x and y are in ecliptic coordinates with the lens at the origin
-		  // this isn't yet stored in the event, but presumably it gets stored after we blend with any other sources.
-		  // check this!!
-		  // if we move on later with astrox1_raw and astrox2_raw, we will no longer be in ecliptic
-		}
-	      if(Paramfile->astrometry_on && used_vbm_astrometry)
-		{
-		  Event->astrox1_raw[is][idx] = Event->vbm->astrox1;  // x-axis in the ESPL-VBM frame is the lens-source axis, so this is
-		  // the raw centroid shift along that axis, which is the only component for a single lens. We can store it incase we
-		  // need to debug later.
-		  Event->astrox2_raw[is][idx] = 0.0; // ESPL does not have an orthogonal component to the centroid shift, so this is just
-		  // set to zero.
-		}
-	      Event->astrox_raw[is][idx] = astro_x[is];
-	      Event->astroy_raw[is][idx] = astro_y[is];
-	    } 
-	  // I feel like we are missing the blending, but lets let her cook.
-	}
-      else if(nlens==2)  //binary lens
-	{
-	  double s = qAdd(xl[1]-xl[0],yl[1]-yl[0]);  // scalar angular separation of the two lenses, in units of the Einstein radius
-	  double q = 0.0;
-	  if (Event->lcompanions.size()>0)
-	    {
-	      q = Event->lcomp_q[0];  // mass ratio of the two stellar lenses
-	      
 	    }
 	  else
 	    {
-	      q = Event->p_q[0];  // mass ratio of the two lenses
+	      mu_bin[is] = 1.0;
+	      mu_pl[is] = 1.0;
 	    }
-	  double rot = atan2(yl[1],xl[1]);  // angle to rotate coordinates into the VBM binary lens frame, which is defined such that 
-	  // the two lenses lie on the x-axis. This rotation is needed because the VBM binary lens magnification functions assume the 
-	  // binary axis is along the x-axis, which can be at any angle on the sky, but we have the lens positions in ecliptic coordinates 
-	  // (xl, yl). 
-	  // The rotation (rot) is in the direction to rotate the event-frame lens positions into the VBM frame, which is a counterclockwise 
-	  // rotation by the angle of the binary axis. To rotate the source positions into the VBM frame, we need to rotate by -rot.
-	  double cr = cos(-rot); double sr = sin(-rot);  // event -> VBM frame coefficients
-	  double cr_inv = cos(rot); double sr_inv = sin(rot);   // VBM -> event frame coefficients
 
-	  for(int is=0;is<nsrc;is++)  // loop over sources
+	  if(!used_vbm_astrometry)
 	    {
-	      if(is==0) rho = Event->rs;  // get primary-source angular radius in units of the Einstein radius from rs
-	      else rho = Event->scomp_rs[is-1];  // or companion-source angular radius from scomp_rs (does not include the primary).
-	      //rotate coordintates to binary axis
-
-	      // Shift to COM
-	      //Binary mag works from the center of mass, so translate source to CoM, then rotate
-	      double xs_com_ecl = xs[is] + l_delta[0];  // is this to COM or from?
-	      double ys_com_ecl = ys[is] + l_delta[1];  // VBM is COM centered, but what was the event frame centered on?
-	      // it must have lens 1 for this to make sense.
-
-	      // rotate from event -> VBM frame
-	      double xsi = cr*xs_com_ecl - sr*ys_com_ecl;
-	      double ysi = sr*xs_com_ecl + cr*ys_com_ecl;
-	      bool used_vbm_astrometry = false;  // this gets set to true if we use the VBM astrometry logic path.
-	      if(Paramfile->skip_magnification==0)  // if we aren't skipping the magnification calculation...
-		{
-		  mu[is] = Event->vbm->BinaryMag2(s,q,xsi, ysi, rho);  //calculate the per source per epoch magnification using VBM
-		  Event->VBM_function = "BinaryMag2";  // store the function that was used, for debugging
-		  if(handle_vbm_api_error("BinaryMag2", Paramfile, Event, logfile_ptr, Event->vbm)) return;
-		  used_vbm_astrometry = true;  // mark this path as executed, for debugging
-		}
-	      else mu[is] = 1.0;  // if we are skipping the magnification calculation, set the magnification to 1, and we won't use the VBM astrometry
-	      if(Paramfile->astrometry_on && used_vbm_astrometry)
-		{
-		  // BinaryMag2 centroid is in binary-axis coordinates; inverse-rotate
-		  // back to the canonical ecliptic axes, preserving barycenter origin.
-		  double cx_bin = Event->vbm->astrox1;
-		  double cy_bin = Event->vbm->astrox2;
-		  astro_x[is] = cr_inv*cx_bin - sr_inv*cy_bin;
-		  astro_y[is] = sr_inv*cx_bin + cr_inv*cy_bin;
-		  // do we need to shift back to lens 1 as the origin? MP: I don't think so, it is the center of mass that is an inertial frame
-		}
-	      else
-		{
-		  astro_x[is] = xs[is];
-		  astro_y[is] = ys[is];
-		}
-	      if(Paramfile->astrometry_on && used_vbm_astrometry) // if we aren't calculating the magnification, we aren't 
-		// calculating the astrometric shift, so they stay zero (I think. Provided they are initialized as such).
-		{
-		  Event->astrox1_raw[is][idx] = Event->vbm->astrox1;
-		  Event->astrox2_raw[is][idx] = Event->vbm->astrox2;
-		}
-	      Event->astrox_raw[is][idx] = astro_x[is];
-	      Event->astroy_raw[is][idx] = astro_y[is];
+	      astro_x[is] = xs[is];
+	      astro_y[is] = ys[is];
 	    }
-	}
-      else //We're using multi-body lensing
-	{	 
-	  for(int is=0;is<nsrc;is++)
-	    {
-	      if(is==0) rho = Event->rs;
-	      else rho = Event->scomp_rs[is-1];
-	      bool used_vbm_astrometry = false;
-	      if(Paramfile->skip_magnification==0)
-		{
-		  int check=0;
-		  logfile_ptr.precision(16);
-		  logfile_ptr << Event->id << " " << Event->epoch[idx] << " ";
-		  for(int ilp=0;ilp<nlens*3;ilp++)
-		    {
-		      logfile_ptr << lens_parameters[ilp] << " ";
-		      if(!isfinite(lens_parameters[ilp])) check++;
-		    }
-		  logfile_ptr << xs[is] << " " << ys[is] << " " << rho << endl;
-		  if(!isfinite(xs[is])) check++;
-		  if(!isfinite(ys[is])) check++;
-		  if(!isfinite(rho)) check++;
-		      
-
-		  if(check>0)
-		    {
-		      Event->lcerror = LCGEN_INPUT_ERR;
-		      Event->detected = 0;
-		      Event->deterror = 0;
-		      if(Paramfile->verbosity >= 1)
-			{
-			  cout << "Lightcurve generation halted due to bad inputs, event " << Event->id << ", see logfile for parameters." << endl;
-			}
-		      if(logfile_ptr.good())
-			{
-			  logfile_ptr << Event->id << "Lightcurve generation halted due to bad inputs" << endl;
-			}
-		      return;
-		    }
-		  
-
-		  //thread time_thread(&sleep_thread,1000);
-
-		  //Spool up a new vbm for each calculation
-		  VBMicrolensing VBMlocal;
-
-		  VBMlocal.SetLensGeometry(nlens,lens_parameters);
-		  VBMlocal.a1 = Event->gamma;
-		  VBMlocal.Tol=Paramfile->vbm_tol;
-		  VBMlocal.RelTol=Paramfile->vbm_reltol;
-		  VBMlocal.SetMethod(VBMicrolensing::Method::Nopoly);
-		  VBMlocal.SetTimeouts(Event->vbm->GetTimeouts());
-		  VBMlocal.SetErrorPolicy(Event->vbm->GetErrorPolicy());
-		  VBMlocal.astrometry = Event->vbm->astrometry;
-
-		  double u_min=1e50;
-		  int fallback_lens_idx = -1;
-		  double fallback_lens_weight = 0.0;
-		  for(int i=0;i<nlens;i++)
-		    {
-		      const double lens_mass_frac = lens_parameters[i*3+2];
-		      if(lens_mass_frac <= 0.0) continue;
-		      double u_lens = qAdd(xs[is]-lens_parameters[i*3+0],ys[is]-lens_parameters[i*3+1])/sqrt(lens_mass_frac);
-		      if(u_lens<u_min)
-			{
-			  u_min=u_lens;
-			  fallback_lens_idx = i;
-			  fallback_lens_weight = lens_mass_frac;
-			}
-		    }
-
-		  VBMicrolensing* astrometry_vbm = nullptr;
-		  if(u_min<10 && msource[is]<40)
-		    {
-		      mu[is] = VBMlocal.MultiMag2(xs[is], ys[is], rho);
-		      Event->VBM_function = "MultiMag2";
-		      if(handle_vbm_api_error("MultiMag2", Paramfile, Event, logfile_ptr, &VBMlocal)) return;
-		      used_vbm_astrometry = true;
-		      astrometry_vbm = &VBMlocal;
-		      logfile_ptr << mu[is] << " " << VBMlocal.therr << " " << VBMlocal.NPS << endl;
-		    }
-		  else
-		    {
-		      // If the source is far from all lenses, approximate the system as the single
-		      // component lens chosen by the fallback metric (minimum source-lens separation
-		      // in component Einstein-radius units; the most influential lenser). ESPLMag2 works in 
-		      // that lens's natural Einstein-radius units, so convert both u and rho before calling VBM.
-		      const double rho_lens = (fallback_lens_weight > 0.0 ? rho/sqrt(fallback_lens_weight) : rho);
-		      mu[is] = Event->vbm->ESPLMag2(u_min, rho_lens);
-		      Event->VBM_function = "ESPLMag2";
-		      if(handle_vbm_api_error("ESPLMag2", Paramfile, Event, logfile_ptr, Event->vbm)) return;
-		      used_vbm_astrometry = true;
-		      astrometry_vbm = Event->vbm;
-		      logfile_ptr << mu[is] << " " << (u_min>=10?"single":"null") << " " << (msource[is]>=40?"faint":"null") << endl;
-		    }
-
-		  if(Paramfile->astrometry_on && used_vbm_astrometry && astrometry_vbm)
-		    {
-		      if(Event->VBM_function == "ESPLMag2" && fallback_lens_idx >= 0 && fallback_lens_weight > 0.0)
-			{
-			  const double dx = xs[is] - lens_parameters[fallback_lens_idx*3+0];
-			  const double dy = ys[is] - lens_parameters[fallback_lens_idx*3+1];
-			  const double dist = qAdd(dx,dy);
-			  if(dist > 1e-12)
-			    {
-			      // ESPLMag2 returns a scalar centroid shift along the source-lens axis in the
-			      // component-lens Einstein units. Project it back onto the 2D event frame and
-			      // rescale by sqrt(mass fraction) to recover event-thetaE units.
-			      const double ast_shift_event = astrometry_vbm->astrox1 * sqrt(fallback_lens_weight);
-			      astro_x[is] = lens_parameters[fallback_lens_idx*3+0] + ast_shift_event * dx/dist;
-			      astro_y[is] = lens_parameters[fallback_lens_idx*3+1] + ast_shift_event * dy/dist;
-			    }
-			  else
-			    {
-			      astro_x[is] = xs[is];
-			      astro_y[is] = ys[is];
-			    }
-			}
-		      else
-			{
-			  astro_x[is] = astrometry_vbm->astrox1;
-			  astro_y[is] = astrometry_vbm->astrox2;
-			}
-		    }
-		  else
-		    {
-		      astro_x[is] = xs[is];
-		      astro_y[is] = ys[is];
-		    }
-		  if(Paramfile->astrometry_on && used_vbm_astrometry && astrometry_vbm)
-		    {
-		      Event->astrox1_raw[is][idx] = astrometry_vbm->astrox1;
-		      Event->astrox2_raw[is][idx] = astrometry_vbm->astrox2;
-		    }
-		}
-
-	      else mu[is] = 1.0;
-	      Event->astrox_raw[is][idx] = astro_x[is];
-	      Event->astroy_raw[is][idx] = astro_y[is];
-	    }
+	  Event->astrox_raw[is][idx] = astro_x[is];
+	  Event->astroy_raw[is][idx] = astro_y[is];
+	  mu[is] = mu_bin[is];
 	}
 
       for(int is=0;is<nsrc;is++)
@@ -1184,12 +1110,14 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	    }
 	}
 
-      //Here Atrue is magnification, but later it gets converted into fractional flux
-      Event->Atrue[idx] = mu[0];
+      Event->Atrue_bin[idx] = mu_bin[0];
+      Event->Atrue_pl[idx] = mu_pl[0];
       for(int is=1;is<nsrc;is++)
 	{
-	  Event->Atrue[idx] += Event->scomp_fsofs1[is-1][filt] * (mu[is]-1.0);
+	  Event->Atrue_bin[idx] += Event->scomp_fsofs1[is-1][filt] * (mu_bin[is]-1.0);
+	  Event->Atrue_pl[idx] += Event->scomp_fsofs1[is-1][filt] * (mu_pl[is]-1.0);
 	}
+      Event->Atrue[idx] = Event->Atrue_bin[idx];
 
       if(Paramfile->astrometry_on)
 	{

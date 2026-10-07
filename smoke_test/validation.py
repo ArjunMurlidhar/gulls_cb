@@ -18,15 +18,48 @@ _CANONICAL_PSF_HASHES: Dict[str, str] = {
 }
 
 
+def _kept_events_all_skipped(out_files: Sequence[Path]) -> bool:
+    """True when every non-discarded event row has SkipLC=1."""
+    kept = [path for path in out_files if "discarded" not in path.name]
+    if not kept:
+        return False
+    saw_row = False
+    for path in kept:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        header = None
+        for raw in lines:
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            header = stripped.split()
+            break
+        if header is None or "SkipLC" not in header:
+            return False
+        skip_idx = header.index("SkipLC")
+        for raw in lines:
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split()
+            if parts == header:
+                continue
+            saw_row = True
+            if skip_idx >= len(parts) or parts[skip_idx] != "1":
+                return False
+    return saw_row
+
+
 def verify_outputs(output_dir: Path) -> List[Path]:
     out_files = sorted(output_dir.glob("*.out"))
     lc_files = sorted(output_dir.rglob("*.lc"))
     if not out_files:
         raise SmokeTestError(f"No .out files found in {output_dir}")
-    if not lc_files:
-        raise SmokeTestError(f"No .lc files found under {output_dir}")
-    if out_files[0].stat().st_size == 0:
+    nonempty = [path for path in out_files if path.stat().st_size > 0]
+    if not nonempty:
         raise SmokeTestError(f"Summary file is empty: {out_files[0]}")
+    if not lc_files:
+        if not _kept_events_all_skipped(out_files):
+            raise SmokeTestError(f"No .lc files found under {output_dir}")
     for lc_file in lc_files:
         _verify_lightcurve_table_format(lc_file)
     return out_files

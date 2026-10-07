@@ -60,6 +60,18 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
       Event->allsatobs[obsidx]=1;
     }
 
+  const bool dual_lc = (Event->Atrue_bin.size()==size_t(Event->nepochs)
+			&& Event->Atrue_pl.size()==size_t(Event->nepochs));
+  if(dual_lc)
+    {
+      Event->Atrueerr_bin.assign(Event->nepochs, 0.0);
+      Event->Atrueerr_pl.assign(Event->nepochs, 0.0);
+      Event->Aobs_bin.assign(Event->nepochs, 0.0);
+      Event->Aobs_pl.assign(Event->nepochs, 0.0);
+      Event->Aerr_bin.assign(Event->nepochs, 0.0);
+      Event->Aerr_pl.assign(Event->nepochs, 0.0);
+    }
+
   //Perform the photometry  (epoch loop)
   for(idx=0;idx<Event->nepochs;idx++)
     {
@@ -77,7 +89,35 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
       Event->ra_err_deg[idx] = 0.0;
       Event->dec_err_deg[idx] = 0.0;
 
-      if(World[obsidx].photcode==FASTAP)
+      if(dual_lc && World[obsidx].photcode==FASTAP)
+	{
+	  double mag_bin = Event->Atrue_bin[idx];
+	  double mag_pl = Event->Atrue_pl[idx];
+	  double nci_bin, ncs_bin, nci_pl, ncs_pl, erri_pl;
+	  int satflag_pl = 0;
+	  World[obsidx].im.fast_photometry(mag_bin, &nci_bin, &ncs_bin, &erri, &satflag);
+	  World[obsidx].im.fast_photometry(mag_pl, &nci_pl, &ncs_pl, &erri_pl, &satflag_pl, true);
+	  const double eps = ncs_bin - nci_bin;
+	  ncs_pl = nci_pl + eps;
+	  if(satflag_pl) satflag = 1;
+	  errs = erri;
+
+	  baseline = Event->baselineFlux[obsidx] * Event->texp[idx]
+	    * Event->nstack[idx];
+	  Event->Atrue_bin[idx] = nci_bin/baseline;
+	  Event->Atrueerr_bin[idx] = erri/baseline;
+	  Event->Aobs_bin[idx] = ncs_bin/baseline;
+	  Event->Aerr_bin[idx] = errs/baseline;
+	  Event->Atrue_pl[idx] = nci_pl/baseline;
+	  Event->Atrueerr_pl[idx] = erri/baseline;
+	  Event->Aobs_pl[idx] = ncs_pl/baseline;
+	  Event->Aerr_pl[idx] = errs/baseline;
+	  Event->Atrue[idx] = Event->Atrue_bin[idx];
+	  Event->Atrueerr[idx] = Event->Atrueerr_bin[idx];
+	  Event->Aobs[idx] = Event->Aobs_bin[idx];
+	  Event->Aerr[idx] = Event->Aerr_bin[idx];
+	}
+      else if(World[obsidx].photcode==FASTAP)
 	{
 	  ampmag = Event->Atrue[idx];
 	  World[obsidx].im.fast_photometry(ampmag, &nci, &ncs, &erri, &satflag);
@@ -139,6 +179,39 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
 				   ampmag);
 	  //subtract the background
 	  World[obsidx].im.subbg();
+
+	  if(dual_lc)
+	    {
+	      Event->Atrue_bin[idx] = Event->Atrue[idx];
+	      Event->Atrueerr_bin[idx] = Event->Atrueerr[idx];
+	      Event->Aobs_bin[idx] = Event->Aobs[idx];
+	      Event->Aerr_bin[idx] = Event->Aerr[idx];
+	      const double eps = Event->Aobs[idx] - Event->Atrue[idx];
+	      const double mag_pl = Event->Atrue_pl[idx];
+	      World[obsidx].im.set_background(Event->backmag[idx]);
+	      World[obsidx].im.addbg();
+	      ampmag = Sources->mags[sn][filter]-2.5*log10(mag_pl);
+	      World[obsidx].im.addstar_specific_pos(Event->xsub[obsidx], Event->ysub[obsidx], ampmag);
+	      int satflag_pl = 0;
+	      World[obsidx].im.wis_photometry(Event->xsub[obsidx], Event->ysub[obsidx],
+					      Event->texp[idx], Event->nstack[idx],
+					      &phot, &satflag_pl);
+	      if(World[obsidx].photcode<2)
+		{
+		  Event->Atrue_pl[idx] = phot[0]/baseline;
+		  Event->Atrueerr_pl[idx] = Event->Atrueerr_bin[idx];
+		}
+	      else
+		{
+		  Event->Atrue_pl[idx] = phot[4]/baseline;
+		  Event->Atrueerr_pl[idx] = Event->Atrueerr_bin[idx];
+		}
+	      Event->Aobs_pl[idx] = Event->Atrue_pl[idx] + eps;
+	      Event->Aerr_pl[idx] = Event->Aerr_bin[idx];
+	      if(satflag_pl) satflag = 1;
+	      World[obsidx].im.substar(Event->xsub[obsidx], Event->ysub[obsidx], ampmag);
+	      World[obsidx].im.subbg();
+	    }
 	}
 
       if(Paramfile->astrometry_on)

@@ -311,6 +311,8 @@ struct event{
   int circumbinary;
   int distantbinary;
   int mixedbinary;
+  int skip_lc;        // 1 = intentional skip of LC generation; lcerror stays 0
+  int bad_scenario;   // diagnostic bitmask; not an lcerror
 
   //double ljoint_thE, ljoint_tE, ljoint_rE;
   double qsum;
@@ -392,6 +394,19 @@ struct event{
   vector<double> Aobs;
   vector<double> Aerr;
   vector<double> Afit;
+  // Dual BinaryMag2 series for stable P-type circumbinary events
+  vector<double> Atrue_bin;
+  vector<double> Atrue_pl;
+  vector<double> Atrueerr_bin;
+  vector<double> Atrueerr_pl;
+  vector<double> Aobs_bin;
+  vector<double> Aobs_pl;
+  vector<double> Aerr_bin;
+  vector<double> Aerr_pl;
+  vector<double> Afit_bin;
+  vector<double> Afit_pl;
+  vector<double> chi2_bin;
+  vector<double> chi2_pl;
   vector<bool> nosat;      /*Is point unsaturated? */
   vector<double> backmag;
   vector<double> dF;

@@ -34,7 +34,7 @@ def effective_parameters(sb, qb, sp, qp, psi):
 
 def to_vbm_frame(z, s_eff, q, psi_eff, host_position):
     z_vbm = 1 / np.sqrt(1 + q) * (
-        np.exp(-1j * psi_eff) * (z - host_position) + q * s_eff / (1 + q)
+        np.exp(-1j * psi_eff) * (z - host_position) - q * s_eff / (1 + q)
     )
     return z_vbm
 

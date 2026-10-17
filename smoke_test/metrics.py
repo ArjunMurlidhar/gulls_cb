@@ -94,9 +94,6 @@ def _extract_summary_metrics(out_file: Path) -> Dict[Tuple[int, int, int], Dict[
 
             metrics[event_key] = summary
 
-        if not metrics:
-            raise SmokeTestError(f"No data rows found in {out_file}")
-
         return metrics
 
 

@@ -107,6 +107,7 @@ The parameter file (``.prm``) orchestrates your simulation. Here's a minimal exa
    SUBRUNSIZE=1000
    NSUBRUNS=10
    PARALLAX=1
+   LENS_ORBITAL_MOTION=1
    AMIN=1.0001
 
 See ``smoke_test/parameterfiles/`` for complete working examples.
@@ -221,6 +222,7 @@ Common Parameters
 **Observing conditions:**
 
 - ``PARALLAX`` - Enable (1) or disable (0) parallax effects
+- ``LENS_ORBITAL_MOTION`` - Evolve (1) or freeze at ``tref`` (0) lens sky positions; source orbital motion and parallax are unchanged
 - ``LENS_LIGHT`` - Include (1) or exclude (0) lens star light (set to 0 for free-floating planets)
 
 **Event selection:**

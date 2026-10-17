@@ -214,7 +214,13 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
 	    }
 	}
 
-      if(Paramfile->astrometry_on)
+      // Image centroids are filled by generators that compute astrometry.
+      // omLightcurveGenerator does not; skip this block rather than inventing centroids.
+      const bool have_image_centroids =
+	(Event->xc_srcs_only.size() == size_t(Event->nepochs)
+	 && Event->yc_srcs_only.size() == size_t(Event->nepochs)
+	 && Event->src_flux_total.size() == size_t(Event->nepochs));
+      if(Paramfile->astrometry_on && have_image_centroids)
 	{
 	  const double dt_year = (shiftedidx >= 0 && shiftedidx < int(Event->pllx[obsidx].epochs.size())) // check that the shifted index is within the bounds of the pllx epochs vector for this observatory
 	    ? ((Event->pllx[obsidx].epochs[shiftedidx] - Event->pllx[obsidx].tref) / DAYINYR) // if the shifted index is out of bounds, fall back to using the unshifted epoch for this index (which may also be out of bounds, but at least won't be negative)

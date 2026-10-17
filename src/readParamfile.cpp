@@ -50,6 +50,7 @@ void readParamfile(string v_file, struct filekeywords *Paramfile){
     {"OUTPUT_ONDET","0"},
     {"OUTPUT_ONALL","0"},    
     {"PARALLAX","1"},
+    {"LENS_ORBITAL_MOTION","1"},
     {"LENS_LIGHT","1"},
     {"REPEAT_SEQUENCE","0"}, 
     {"OBS_GROUPS","(ALL)"},
@@ -254,6 +255,7 @@ void readParamfile(string v_file, struct filekeywords *Paramfile){
   Paramfile->outputOnDet = stoi(pfile["OUTPUT_ONDET"]);
   Paramfile->outputOnAll = stoi(pfile["OUTPUT_ONALL"]);
   Paramfile->pllxMultiplyer = stod(pfile["PARALLAX"]);
+  Paramfile->lens_orbital_motion = stoi(pfile["LENS_ORBITAL_MOTION"]);
   Paramfile->lenslight = stoi(pfile["LENS_LIGHT"]);
   Paramfile->identicalSequence = stoi(pfile["REPEAT_SEQUENCE"]);
   Paramfile->NUM_SIM_DAYS = stoi(pfile["NUM_SIM_DAYS"]);

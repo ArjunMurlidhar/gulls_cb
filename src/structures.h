@@ -143,6 +143,7 @@ struct filekeywords{
   vector<int> validFields;
   int lenslight;
   double pllxMultiplyer; //Adjust the strength of parallax - will usually choose 0 (off) or 1 (normal)
+  int lens_orbital_motion; // 0=freeze lens sky positions at tref, 1=evolve each epoch
   int verbosity;
   int choosefield; //The field number 
   int instance; //The subrun number

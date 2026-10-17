@@ -234,6 +234,12 @@ PARALLAX
 - **Default**: 1
 - **Description**: Include parallax effects (0=no, 1=yes).
 
+LENS_ORBITAL_MOTION
+~~~~~~~~~~~~~~~~~~~
+- **Type**: int
+- **Default**: 1
+- **Description**: Evolve lens sky positions each epoch (1) or freeze them at ``tref`` (0). Source orbital motion and parallax are unchanged.
+
 LENS_LIGHT
 ~~~~~~~~~~
 - **Type**: int

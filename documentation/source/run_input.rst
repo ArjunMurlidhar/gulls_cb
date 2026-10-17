@@ -410,7 +410,7 @@ The gulls Simulator relies on parameter files to configure simulations accuratel
 
    For specialized simulations, you might adjust the following:
 
-   - **IDEAL_PHOTOMETRY**, **PARALLAX**, and **LENS_LIGHT** for specific observational effects.
+   - **IDEAL_PHOTOMETRY**, **PARALLAX**, **LENS_ORBITAL_MOTION**, and **LENS_LIGHT** for specific observational effects.
    - **RANDOM_SEED** and timing settings to influence the stochastic elements of the simulation.
 
    Example advanced settings:
@@ -419,6 +419,7 @@ The gulls Simulator relies on parameter files to configure simulations accuratel
 
       IDEAL_PHOTOMETRY=-1
       PARALLAX=1
+      LENS_ORBITAL_MOTION=1
       LENS_LIGHT=1
       SET_RANDOM_SEED_TO_CLOCK=1
       RANDOM_SEED=1001

@@ -124,27 +124,15 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
   //else Event->vbm->SetMethod(VBMicrolensing::Method::Nopoly);
   Event->vbm->SetMethod(VBMicrolensing::Method::Nopoly);
   Event->vbm->a1 = Event->gamma;
-  Event->vbm->astrometry = (Paramfile->astrometry_on != 0);
-
-
-  Event->astrox1_raw.resize(Event->nsrc);
-  Event->astrox2_raw.resize(Event->nsrc);
-  // astro*_raw in event frame with per epoch and per source values for debugging and testing. These are the raw outputs of the VBM, before any rotation or translation to event frame coordinates, so they are in the VBM frame and centered on the center of mass of the lens system. We store these for debugging and testing, and then we will apply the appropriate rotations and translations to get the final astrometric centroid in event frame coordinates, which will be stored in Event->astrox1/2. This way we can test the VBM astrometry logic path independently of the coordinate transformations to get to event frame coordinates, and we can also test the coordinate transformations independently by comparing the raw VBM output to the final event frame astrometry.
-  Event->astrox_raw.resize(Event->nsrc);
-  Event->astroy_raw.resize(Event->nsrc);
-  for(int i=0; i<Event->nsrc; i++)
-    {
-      Event->astrox1_raw[i].assign(Event->nepochs,0.0);
-      Event->astrox2_raw[i].assign(Event->nepochs,0.0);
-      Event->astrox_raw[i].assign(Event->nepochs,0.0);
-      Event->astroy_raw[i].assign(Event->nepochs,0.0);
-    }
-  Event->xc_srcs_only.assign(Event->nepochs,0.0);  // flux weighted addition of source-image centroids
-  Event->yc_srcs_only.assign(Event->nepochs,0.0);
-  Event->xc_src_lens.assign(Event->nepochs,0.0);  // flux weighted addition of source-image centroids and luminous lens centroids, for astrometry path only. This is the relevant blended centroid for astrometry, since ambient light does not contribute to astrometric blending by contract.
-  Event->yc_src_lens.assign(Event->nepochs,0.0);
-
-  Event->src_flux_total.assign(Event->nepochs,0.0); // total source flux (for calculating blended centroid), in units of the unmagnified source flux, for astrometry path only
+  // This generator produces magnifications only; do not compute or store image centroids.
+  Event->vbm->astrometry = 0;
+  Event->astrox1_raw.clear();
+  Event->astrox2_raw.clear();
+  Event->astrox_raw.clear();
+  Event->astroy_raw.clear();
+  Event->xc_srcs_only.clear();
+  Event->yc_srcs_only.clear();
+  Event->src_flux_total.clear();
 
   Event->moons = 0;
   Event->circumbinary=0;
@@ -777,9 +765,32 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 
   
   Event->bad_scenario = bad_scenario;
-  // Generate magnification only for stable P-type circumbinary events.
-  // Everything else is skip_lc with lcerror=0; params still go to the main outfile.
-  if(!(Event->circumbinary==1 && bad_scenario==0))
+  // Unstable/unphysical configurations are discarded with a dedicated lcerror.
+  if(bad_scenario > 0)
+    {
+      Event->lcerror = 9000 + bad_scenario;
+      Event->skip_lc = 0;
+      Event->detected = 0;
+      Event->deterror = 0;
+      if(Paramfile->verbosity >= 1)
+	{
+	  cout << "Lightcurve generation discarded (bad_scenario), event " << Event->id
+	       << ", circumbinary=" << Event->circumbinary
+	       << ", bad_scenario=" << bad_scenario
+	       << ", lcerror=" << Event->lcerror << endl;
+	}
+      if(logfile_ptr.good())
+	{
+	  logfile_ptr << "Lightcurve generation discarded (bad_scenario), event " << Event->id
+		      << ", circumbinary=" << Event->circumbinary
+		      << ", bad_scenario=" << bad_scenario
+		      << ", lcerror=" << Event->lcerror << endl;
+	}
+      delete[] lens_parameters;
+      return;
+    }
+  // Not a bad scenario and not a stable P-type: skip LC; params still go to the main outfile.
+  if(Event->circumbinary != 1)
     {
       Event->skip_lc = 1;
       Event->lcerror = 0;
@@ -831,6 +842,33 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 
   Event->Atrue_bin.assign(Event->nepochs, 1.0);
   Event->Atrue_pl.assign(Event->nepochs, 1.0);
+
+  const bool evolve_lens_orbit = (Paramfile->lens_orbital_motion != 0);
+  vector<double> xl_tref(nlens, 0.0);
+  vector<double> yl_tref(nlens, 0.0);
+  auto fill_lens_sky = [&](double jd, vector<double>& xl, vector<double>& yl, bool verbose)
+    {
+      for(int i=0;i<nlens;i++)
+	{
+	  vector<double> xp;
+	  xl[i] = 0.0;
+	  yl[i] = 0.0;
+	  for(int j=0;j<int(l_elements[i].size());j++)
+	    {
+	      if(verbose) l_elements[i][j].print_elements();
+	      l_elements[i][j].viewfrom(jd, antipode_ra, antipode_dec, &xp);
+	      if(verbose) cout << setprecision(16) << i << " " << j << " " << jd << " " << xp[0] << " " << xp[1] << " " << xp[2] << endl;
+	      xl[i] += xp[0];
+	      yl[i] += xp[1];
+	    }
+	  xl[i] /= Event->rE;
+	  yl[i] /= Event->rE;
+	}
+    };
+  if(!evolve_lens_orbit && nlens>1)
+    {
+      fill_lens_sky(Event->tref + Paramfile->simulation_zerotime, xl_tref, yl_tref, Paramfile->verbosity>=3);
+    }
 
   if(Paramfile->verbosity>=1) cout << "Starting lightcurve generation" << endl;
   
@@ -912,30 +950,23 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 
       vector<double> xl(nlens,0.0); //lens position in the plane of the sky, ecliptic sky coordinates in AU
       vector<double> yl(nlens,0.0);
-      vector<double> dl(nlens,0.0); //lens distance 
 
       if(nlens>1)
 	{
+	  if(!evolve_lens_orbit)
+	    {
+	      xl = xl_tref;
+	      yl = yl_tref;
+	    }
+	  else
+	    {
+	      fill_lens_sky(Event->jdtimes[obsidx][shiftedidx], xl, yl, Paramfile->verbosity>=3 || idx==0);
+	    }
 	  for(int i=0;i<nlens;i++)
 	    {
-	      vector<double> xp;      
-	      for(int j=0;j<int(l_elements[i].size());j++)
-		{
-		  if(Paramfile->verbosity>=3 || idx==0) l_elements[i][j].print_elements();
-		  l_elements[i][j].viewfrom(Event->jdtimes[obsidx][shiftedidx],antipode_ra,antipode_dec,&xp);
-		  if(Paramfile->verbosity>=3 || idx==0) cout << setprecision(16) << i << " " << j << " " << Event->jdtimes[obsidx][shiftedidx] << " " << xp[0] << " " << xp[1] << " " << xp[2] << endl;
-		  xl[i] += xp[0]; yl[i] += xp[1]; dl[i] += xp[2];
-		}
-	      //This shift of origin away from the center of mass has been moved to the source position
-	      //xl[i] -= l_delta[0]; yl[i] -= l_delta[1]; dl[i] -= l_delta[2];
-
-
-	      xl[i] /= Event->rE; yl[i] /= Event->rE; dl[i] /= Event->rE;
-
-	      //rotations needed here?
 	      lens_parameters[3*i+0] = xl[i];
 	      lens_parameters[3*i+1] = yl[i];
-	      Event->xlens[i][idx] = xl[i];  // is this lens parallax? -A MP: No, this is in the center of mass frame
+	      Event->xlens[i][idx] = xl[i];
 	      Event->ylens[i][idx] = yl[i];
 	    }
 
@@ -944,14 +975,12 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
       else
 	{
 	  xl[0] = 0.0; yl[0] = 0.0;
-	  Event->xlens[0][idx] = 0.0; Event->ylens[0][idx] = 0.0; // how come this doesn't need parallax? -A MP: again, center of mass frame
+	  Event->xlens[0][idx] = 0.0; Event->ylens[0][idx] = 0.0;
 	}
 
       
 
       //Finally ready to compute magnifications
-      vector<double> astro_x(nsrc,0.0);
-      vector<double> astro_y(nsrc,0.0);
       vector<double> mu_bin(nsrc, 1.0);
       vector<double> mu_pl(nsrc, 1.0);
 
@@ -1018,8 +1047,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	}
       const double cr_a = cos(-rot_a);
       const double sr_a = sin(-rot_a);
-      const double cr_a_inv = cos(rot_a);
-      const double sr_a_inv = sin(rot_a);
 
       for(int is=0;is<nsrc;is++)
 	{
@@ -1043,7 +1070,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	  const double y2_pl = z_vbm.imag();
 	  const double rho_VB = rho_bin / sqrt(1.0 + qp);
 
-	  bool used_vbm_astrometry = false;
 	  if(Paramfile->skip_magnification==0)
 	    {
 	      if(!std::isfinite(sb) || !std::isfinite(q_vbm) || !std::isfinite(y1_a) || !std::isfinite(y2_a)
@@ -1063,19 +1089,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 		  return;
 		}
 
-	      if(Paramfile->astrometry_on)
-		{
-		  const double cx_bin = Event->vbm->astrox1;
-		  const double cy_bin = Event->vbm->astrox2;
-		  const double cx_ecl = (cr_a_inv * cx_bin - sr_a_inv * cy_bin) * thE_scale + x_bin_com;
-		  const double cy_ecl = (sr_a_inv * cx_bin + cr_a_inv * cy_bin) * thE_scale + y_bin_com;
-		  astro_x[is] = cx_ecl;
-		  astro_y[is] = cy_ecl;
-		  Event->astrox1_raw[is][idx] = cx_bin;
-		  Event->astrox2_raw[is][idx] = cy_bin;
-		  used_vbm_astrometry = true;
-		}
-
 	      mu_pl[is] = Event->vbm->BinaryMag2(eff.s_eff, qp, y1_pl, y2_pl, rho_VB);
 	      if(handle_vbm_api_error("BinaryMag2", Paramfile, Event, logfile_ptr, Event->vbm))
 		{
@@ -1089,13 +1102,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	      mu_pl[is] = 1.0;
 	    }
 
-	  if(!used_vbm_astrometry)
-	    {
-	      astro_x[is] = xs[is];
-	      astro_y[is] = ys[is];
-	    }
-	  Event->astrox_raw[is][idx] = astro_x[is];
-	  Event->astroy_raw[is][idx] = astro_y[is];
 	  mu[is] = mu_bin[is];
 	}
 
@@ -1118,35 +1124,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	  Event->Atrue_pl[idx] += Event->scomp_fsofs1[is-1][filt] * (mu_pl[is]-1.0);
 	}
       Event->Atrue[idx] = Event->Atrue_bin[idx];
-
-      if(Paramfile->astrometry_on)
-	{
-	  double src_flux_tot = mu[0];  // just prinary source flux at this point
-	  double cx_src = astro_x[0] * mu[0];  // weighted primary source positon
-	  double cy_src = astro_y[0] * mu[0];
-	  for(int is=1;is<nsrc;is++)
-	    {
-	      double src_flux = Event->scomp_fsofs1[is-1][filt] * mu[is];  //calculate epoch-wise flux of each companion source
-	      src_flux_tot += src_flux;  // iteratively add the companion source fluxes
-	      cx_src += astro_x[is] * src_flux;  // weighted centroid addition from each companion source
-	      cy_src += astro_y[is] * src_flux;
-	    }
-	  if(src_flux_tot>0.0)
-	    {
-	      cx_src /= src_flux_tot;  // normalize the centroid by the total flux to get the flux-weighted centroid position
-	      cy_src /= src_flux_tot;
-	    }
-	  else
-	    {
-	      cx_src = std::numeric_limits<double>::quiet_NaN();  // if total source flux is negative, something is wrong
-	      cy_src = std::numeric_limits<double>::quiet_NaN();
-	    }
-
-	  Event->xc_srcs_only[idx] = cx_src;  // blended apparent source centroid
-	  Event->yc_srcs_only[idx] = cy_src;
-	  Event->src_flux_total[idx] = src_flux_tot;  // so I don't have to recalculate it in photometry.cpp
-	}
-
 
       // Keep track of highest magnification
       if (Event->Atrue[idx] > Event->Amax)

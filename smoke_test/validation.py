@@ -18,12 +18,9 @@ _CANONICAL_PSF_HASHES: Dict[str, str] = {
 }
 
 
-def _kept_events_all_skipped(out_files: Sequence[Path]) -> bool:
-    """True when every non-discarded event row has SkipLC=1."""
+def _kept_non_skipped_events(out_files: Sequence[Path]) -> bool:
+    """True when a kept (non-discarded) event is expected to have a lightcurve."""
     kept = [path for path in out_files if "discarded" not in path.name]
-    if not kept:
-        return False
-    saw_row = False
     for path in kept:
         lines = path.read_text(encoding="utf-8").splitlines()
         header = None
@@ -33,9 +30,9 @@ def _kept_events_all_skipped(out_files: Sequence[Path]) -> bool:
                 continue
             header = stripped.split()
             break
-        if header is None or "SkipLC" not in header:
-            return False
-        skip_idx = header.index("SkipLC")
+        if header is None:
+            continue
+        skip_idx = header.index("SkipLC") if "SkipLC" in header else None
         for raw in lines:
             stripped = raw.strip()
             if not stripped or stripped.startswith("#"):
@@ -43,10 +40,9 @@ def _kept_events_all_skipped(out_files: Sequence[Path]) -> bool:
             parts = stripped.split()
             if parts == header:
                 continue
-            saw_row = True
-            if skip_idx >= len(parts) or parts[skip_idx] != "1":
-                return False
-    return saw_row
+            if skip_idx is None or skip_idx >= len(parts) or parts[skip_idx] != "1":
+                return True
+    return False
 
 
 def verify_outputs(output_dir: Path) -> List[Path]:
@@ -58,7 +54,9 @@ def verify_outputs(output_dir: Path) -> List[Path]:
     if not nonempty:
         raise SmokeTestError(f"Summary file is empty: {out_files[0]}")
     if not lc_files:
-        if not _kept_events_all_skipped(out_files):
+        # SkipLC=1 events stay in the main outfile without LCs. Unstable/bad
+        # events are written to *_discarded.out and also have no LCs.
+        if _kept_non_skipped_events(out_files):
             raise SmokeTestError(f"No .lc files found under {output_dir}")
     for lc_file in lc_files:
         _verify_lightcurve_table_format(lc_file)

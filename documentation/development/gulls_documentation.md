@@ -277,6 +277,7 @@ In the quick start, we talked about `singlelens.prm` file and how essential it i
     magnification, blinking between peak and base images should show the
     microlensing event (requires Fpeak>~1.3 to be easily visible).
   - If you want to generate a **PARALLAX** data, set `PARALLAX=1`, if not set it to 0.
+  - `LENS_ORBITAL_MOTION=1` evolves lens sky positions each epoch. Set it to 0 to freeze the lens configuration at `tref`. Source orbital motion and parallax are unchanged.
   - You can change the `IDEAL_PHOTOMETRY` as well. `IDEAL_PHOTOMETRY=-1` gives you the fastest output. 
   - `LENS_LIGHT` can turn the lens star light off (0) and on (1). In the case of free-floating planets, you can assign `LENS_LIGHT = 0`. 
   - You can set a limit for u0, using `U0MAX`.
@@ -285,6 +286,7 @@ In the quick start, we talked about `singlelens.prm` file and how essential it i
   ```
   IDEAL_PHOTOMETRY=-1
   PARALLAX=1
+  LENS_ORBITAL_MOTION=1
   LENS_LIGHT=1
 
   SET_RANDOM_SEED_TO_CLOCK=1

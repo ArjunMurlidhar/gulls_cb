@@ -524,7 +524,8 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
           return exit_code;
         }
 
-      // Any non-zero lcerror means downstream photometry/output should not run.
+      // Any non-zero lcerror means downstream photometry/output should not run,
+      // and params go to *_discarded.out (including lcerror=9000+bad_scenario).
       // Intentional skip_lc also skips photometry/detection/LC files, but params
       // still go to the main outfile when lcerror==0.
       const bool lightcurve_failed = (Event.lcerror != 0);

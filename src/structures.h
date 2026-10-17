@@ -143,6 +143,7 @@ struct filekeywords{
   vector<int> validFields;
   int lenslight;
   double pllxMultiplyer; //Adjust the strength of parallax - will usually choose 0 (off) or 1 (normal)
+  int lens_orbital_motion; // 0=freeze lens sky positions at tref, 1=evolve each epoch
   int verbosity;
   int choosefield; //The field number 
   int instance; //The subrun number
@@ -311,6 +312,8 @@ struct event{
   int circumbinary;
   int distantbinary;
   int mixedbinary;
+  int skip_lc;        // 1 = intentional skip of LC generation; lcerror stays 0
+  int bad_scenario;   // diagnostic bitmask; not an lcerror
 
   //double ljoint_thE, ljoint_tE, ljoint_rE;
   double qsum;
@@ -319,6 +322,10 @@ struct event{
   //microlensing paramters
   double tref; //Reference time for parallax
   double u0, alpha, t0, tcroin, ucroin, rcroin, tE_h, tE_r, rE, thE, piE, piEN, piEE, rs, murel, murel_l, murel_b, vt, gamma;
+  // Binary-star CoM frame (θ_E of M1+M2). Planet-dependent fields NaN without a
+  // planet; all NaN with no stellar companion. cb_alpha: track angle in degrees
+  // [0,360) from the lighter→heavier binary axis at tref (not Event->alpha).
+  double cb_t0, cb_u0, cb_tE, cb_sb, cb_sp, cb_qb, cb_qp, cb_psi, cb_rho, cb_alpha;
   propermotionframe pm_lens;
   propermotionframe pm_source;
   //weights
@@ -392,6 +399,19 @@ struct event{
   vector<double> Aobs;
   vector<double> Aerr;
   vector<double> Afit;
+  // Dual BinaryMag2 series for stable P-type circumbinary events
+  vector<double> Atrue_bin;
+  vector<double> Atrue_pl;
+  vector<double> Atrueerr_bin;
+  vector<double> Atrueerr_pl;
+  vector<double> Aobs_bin;
+  vector<double> Aobs_pl;
+  vector<double> Aerr_bin;
+  vector<double> Aerr_pl;
+  vector<double> Afit_bin;
+  vector<double> Afit_pl;
+  vector<double> chi2_bin;
+  vector<double> chi2_pl;
   vector<bool> nosat;      /*Is point unsaturated? */
   vector<double> backmag;
   vector<double> dF;

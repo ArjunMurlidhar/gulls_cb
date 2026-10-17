@@ -7,8 +7,12 @@
 #include <fstream>
 #include <limits>
 #include <utility>
+#include <vector>
+#include <string>
 
 #define DEBUGVAR 0
+
+static std::string g_lc_file_tag;
 
 // STRUCTURES.H
 //-------------------------------
@@ -85,6 +89,31 @@ void outputLightcurve(struct event *Event, struct obsfilekeywords World[], struc
       if(Event->allsat || Event->nepochs==0) return;
     }
 
+  if(Event->skip_lc) return;
+
+  const bool dual_lc = (Event->Aobs_bin.size()==size_t(Event->nepochs)
+			&& Event->Aobs_pl.size()==size_t(Event->nepochs)
+			&& Event->Atrue_bin.size()==size_t(Event->nepochs)
+			&& Event->Atrue_pl.size()==size_t(Event->nepochs));
+  if(dual_lc && g_lc_file_tag.empty())
+    {
+      std::vector<double> At=Event->Atrue, Ao=Event->Aobs, Ae=Event->Aerr;
+      std::vector<double> Ate=Event->Atrueerr, Af=Event->Afit;
+      Event->Atrue=Event->Atrue_bin; Event->Aobs=Event->Aobs_bin;
+      Event->Aerr=Event->Aerr_bin; Event->Atrueerr=Event->Atrueerr_bin;
+      Event->Afit=(Event->Afit_bin.size()==size_t(Event->nepochs)?Event->Afit_bin:Event->Afit);
+      g_lc_file_tag = ".bin";
+      outputLightcurve(Event, World, Paramfile, Sources, Lenses);
+      Event->Atrue=Event->Atrue_pl; Event->Aobs=Event->Aobs_pl;
+      Event->Aerr=Event->Aerr_pl; Event->Atrueerr=Event->Atrueerr_pl;
+      Event->Afit=(Event->Afit_pl.size()==size_t(Event->nepochs)?Event->Afit_pl:Event->Afit);
+      g_lc_file_tag = ".pl";
+      outputLightcurve(Event, World, Paramfile, Sources, Lenses);
+      Event->Atrue=At; Event->Aobs=Ao; Event->Aerr=Ae; Event->Atrueerr=Ate; Event->Afit=Af;
+      g_lc_file_tag.clear();
+      return;
+    }
+
   if(Event->detected) extension = "det";
   else if(Event->lcerror||Event->deterror) extension = "err";
   else extension = "all";
@@ -93,13 +122,13 @@ void outputLightcurve(struct event *Event, struct obsfilekeywords World[], struc
     {
       lcfname = Paramfile->outputdir + Paramfile->run_name + "_"
 	+ to_string(Paramfile->instance) + "_" + to_string(Event->id) + "."
-	+ extension + ".lc";
+	+ extension + g_lc_file_tag + ".lc";
     }
   else
     {
       lcfname = Paramfile->outputdir + Paramfile->run_name + "_"
 	+ to_string(Paramfile->instance) + "_" + to_string(Paramfile->choosefield) + "_"
-	+ to_string(Event->id) + "." + extension + ".lc";
+	+ to_string(Event->id) + "." + extension + g_lc_file_tag + ".lc";
     }
   if(DEBUGVAR) cout << "lcname: " << lcfname << endl;
 
@@ -118,13 +147,13 @@ void outputLightcurve(struct event *Event, struct obsfilekeywords World[], struc
         {
 	  lcdatafname = Paramfile->outputdir + Paramfile->run_name + "_"
 	    + to_string(Paramfile->instance) + "_" + to_string(Event->id) + "."
-	    + extension + ".lcdata";
+	    + extension + g_lc_file_tag + ".lcdata";
         }
       else
         {
 	  lcdatafname = Paramfile->outputdir + Paramfile->run_name + "_"
 	    + to_string(Paramfile->instance) + "_" + to_string(Paramfile->choosefield) + "_" +
-	    to_string(Event->id) + "." + extension + ".lcdata";
+	    to_string(Event->id) + "." + extension + g_lc_file_tag + ".lcdata";
         }
       if(DEBUGVAR) cout << "lcdataname: " << lcdatafname << endl;
       if(Event->nepochs>0)

@@ -201,8 +201,18 @@ add_gulls_executable(gulls_std.x
 
 add_general_executable(gulls_general.x
   "${SRC_DIR}/omLightcurveGenerator.cpp"
+  "${SRC_DIR}/cbEffectiveLens.cpp"
   "${SRC_DIR}/detectionCuts.cpp"
   "${SRC_DIR}/generalPlanet.cpp"
+)
+
+add_executable(test_cb_effective_lens.x
+  "${SRC_DIR}/cbEffectiveLens.cpp"
+  "${SRC_DIR}/testing/test_cb_effective_lens.cpp"
+)
+target_include_directories(test_cb_effective_lens.x PRIVATE "${SRC_DIR}")
+set_target_properties(test_cb_effective_lens.x PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
 )
 
 add_gulls_executable(gulls_croin.x
@@ -211,13 +221,15 @@ add_gulls_executable(gulls_croin.x
   "${SRC_DIR}/croinPlanet.cpp"
 )
 
-add_general_executable(gullsFish.x
-  "${SRC_DIR}/pllxLightcurveGenerator_singleSource.cpp"
-  "${SRC_DIR}/fisherDetCuts.cpp"
-  "${SRC_DIR}/fisher.cpp"
-  "${SRC_DIR}/generalPlanet.cpp"
-  "${CLASSES_DIR}/fisherinversion.cpp"
-)
+if(EXISTS "${SRC_DIR}/pllxLightcurveGenerator_singleSource.cpp")
+  add_general_executable(gullsFish.x
+    "${SRC_DIR}/pllxLightcurveGenerator_singleSource.cpp"
+    "${SRC_DIR}/fisherDetCuts.cpp"
+    "${SRC_DIR}/fisher.cpp"
+    "${SRC_DIR}/generalPlanet.cpp"
+    "${CLASSES_DIR}/fisherinversion.cpp"
+  )
+endif()
 
 
 

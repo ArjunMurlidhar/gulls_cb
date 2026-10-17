@@ -8,57 +8,85 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
   
   //dont bother if there was an error generating the lightcurve
   if(Event->lcerror) return;
+  if(Event->skip_lc) return;
 
   Event->deterror=0;
   Event->detected=0;
 
-  for(int obsgroup=0; obsgroup<int(Event->obsgroups.size()); obsgroup++)
+  const bool dual_lc = (Event->Aobs_bin.size()==size_t(Event->nepochs)
+			&& Event->Aobs_pl.size()==size_t(Event->nepochs)
+			&& Event->Atrue_bin.size()==size_t(Event->nepochs)
+			&& Event->Atrue_pl.size()==size_t(Event->nepochs));
+  Event->chi2_bin.assign(Event->obsgroups.size(), 0.0);
+  Event->chi2_pl.assign(Event->obsgroups.size(), 0.0);
+  if(dual_lc)
     {
+      Event->Afit_bin.assign(Event->nepochs, 0.0);
+      Event->Afit_pl.assign(Event->nepochs, 0.0);
+    }
 
-      Event->currentgroup=obsgroup;
-
-      //Determine if an event is detected 
-
-      //Fit a PS lightcurve
-      lightcurveFitter(Paramfile, World, Event);
-
-      //reset parallax parameters back to nominal values if necessary
+  auto reset_pllx = [&]()
+    {
       for(obsidx=0;obsidx<Paramfile->numobservatories;obsidx++)
 	{
 	  Event->pllx[obsidx].provide_murel_h_lb(Event->murel_l,Event->murel_b,
 						 Event->piE, Event->thE);
 	  Event->pllx[obsidx].compute_tushifts();
 	}
+    };
 
-
-      /* If finite source star effects important, fit FS lightcurve */
+  auto fit_current_series = [&](int obsgroup) -> double
+    {
+      lightcurveFitter(Paramfile, World, Event);
+      reset_pllx();
       if(abs(Event->umin) < 10*Event->rs && Event->PSPL[obsgroup].chisq>Paramfile->minChiSquared)
 	{
 	  Event->flag_needFS[obsgroup]=1;
 	  lightcurveFitter_FS(Paramfile, World, Event);
-
-	  //reset parallax parameters back to nominal values if necessary
-	  for(obsidx=0;obsidx<Paramfile->numobservatories;obsidx++)
-	    {
-	      Event->pllx[obsidx].provide_murel_h_lb(Event->murel_l,Event->murel_b,
-						     Event->piE, Event->thE);
-	      Event->pllx[obsidx].compute_tushifts();
-	    }
+	  reset_pllx();
 	}
+      if(Paramfile->outputOnDet==2) return Event->flatchi2[obsgroup];
+      if(Event->flag_needFS[obsgroup]) return Event->FSPL[obsgroup].chisq;
+      return Event->PSPL[obsgroup].chisq;
+    };
 
-      //did we detect it?
-      double chi2;
+  for(int obsgroup=0; obsgroup<int(Event->obsgroups.size()); obsgroup++)
+    {
 
-      if(Paramfile->outputOnDet==2) chi2 = Event->flatchi2[obsgroup];
+      Event->currentgroup=obsgroup;
+
+      if(dual_lc)
+	{
+	  Event->Atrue = Event->Atrue_bin;
+	  Event->Aobs = Event->Aobs_bin;
+	  Event->Aerr = Event->Aerr_bin;
+	  Event->Atrueerr = Event->Atrueerr_bin;
+	  double chi2_bin = fit_current_series(obsgroup);
+	  Event->chi2_bin[obsgroup] = chi2_bin;
+	  Event->Afit_bin = Event->Afit;
+
+	  Event->Atrue = Event->Atrue_pl;
+	  Event->Aobs = Event->Aobs_pl;
+	  Event->Aerr = Event->Aerr_pl;
+	  Event->Atrueerr = Event->Atrueerr_pl;
+	  double chi2_pl = fit_current_series(obsgroup);
+	  Event->chi2_pl[obsgroup] = chi2_pl;
+	  Event->Afit_pl = Event->Afit;
+
+	  Event->Atrue = Event->Atrue_bin;
+	  Event->Aobs = Event->Aobs_bin;
+	  Event->Aerr = Event->Aerr_bin;
+	  Event->Atrueerr = Event->Atrueerr_bin;
+	  Event->Afit = Event->Afit_bin;
+
+	  if(chi2_bin > Paramfile->minChiSquared && chi2_pl > Paramfile->minChiSquared)
+	    Event->detected=1;
+	}
       else
 	{
-	  if(Event->flag_needFS[obsgroup])
-	    chi2 = Event->FSPL[obsgroup].chisq;
-	  else
-	    chi2 = Event->PSPL[obsgroup].chisq;
+	  double chi2 = fit_current_series(obsgroup);
+	  if(chi2 > Paramfile->minChiSquared) Event->detected=1;
 	}
-	  
-      if(chi2 > Paramfile->minChiSquared) Event->detected=1;
     
     } //for each obsgroup
 }

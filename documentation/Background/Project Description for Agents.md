@@ -87,7 +87,7 @@ Here, $\zeta(t)$ and $\zeta_0$ are defined in units of the binary Einstein ring 
 ```python
 def to_vbm_frame(z, s_eff, q, psi_eff, host_position):
     #Rotate from our coordinate system to the VBM coordinate system, shift origin to the barycenter, and scale by the total mass Einstein radius
-    z_vbm = 1/np.sqrt(1+q)*(np.exp(-1j*psi_eff)*(z - host_position) + q*s_eff/(1+q))
+    z_vbm = 1/np.sqrt(1+q)*(np.exp(-1j*psi_eff)*(z - host_position) - q*s_eff/(1+q))
     return z_vbm
 
 def calculate_planet_mag(y1, y2, s_eff, q, psi_eff, host_position, rho):

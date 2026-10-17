@@ -53,6 +53,31 @@ def verify_outputs(output_dir: Path) -> List[Path]:
     nonempty = [path for path in out_files if path.stat().st_size > 0]
     if not nonempty:
         raise SmokeTestError(f"Summary file is empty: {out_files[0]}")
+    for path in out_files:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        header = None
+        header_line_number = 0
+        for line_number, raw in enumerate(lines, start=1):
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            header = stripped.split()
+            header_line_number = line_number
+            break
+        if header is None:
+            continue
+        expected_ncols = len(header)
+        for line_number, raw in enumerate(lines[header_line_number:], start=header_line_number + 1):
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split()
+            if parts == header:
+                continue
+            if len(parts) != expected_ncols:
+                raise SmokeTestError(
+                    f"{path}:{line_number} has {len(parts)} columns but header has {expected_ncols}"
+                )
     if not lc_files:
         # SkipLC=1 events stay in the main outfile without LCs. Unstable/bad
         # events are written to *_discarded.out and also have no LCs.

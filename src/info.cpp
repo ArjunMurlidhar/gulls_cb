@@ -5,10 +5,27 @@
 #include<fstream>
 #include<sstream>
 #include<string>
+#include<cmath>
 
 #include "split.h"
 
 #define DEBUGVAR 0
+
+static void write_num_or_nan(ofstream& ofile, double x)
+{
+  if(std::isfinite(x)) ofile << x << " ";
+  else ofile << "NaN ";
+}
+
+static int selected_planet_index(const struct event* Event)
+{
+  for(int i=0;i<int(Event->p_orbtype.size());i++)
+    {
+      if(Event->p_orbtype[i]!=-1 && Event->p_orbtype[i]!=3)
+	return i;
+    }
+  return -1;
+}
 
 void printEpochs(struct obsfilekeywords World[], int obsidx)
 {
@@ -92,40 +109,8 @@ void writeHeader(struct filekeywords* Paramfile, struct event *Event, struct slc
       ofile << "Lens2_a Lens2_P ";
     }
 
-  for(int i=0;i<Event->ncatalog_planets;i++)
-    {
-      ofile << "p_" << i << "_mass" << " ";
-      ofile << "p_" << i << "_a" << " ";
-      ofile << "p_" << i << "_e" << " ";
-      ofile << "p_" << i << "_I" << " ";
-      ofile << "p_" << i << "_w" << " ";
-      ofile << "p_" << i << "_O" << " ";
-      ofile << "p_" << i << "_orbtype" << " ";
-    }
-
-  for(int i=0;i<Event->ncatalog_planets+Paramfile->multiple_lenses;i++)
-    {
-      ofile << "Planet_" << i << "_mass ";
-      ofile << "Planet_" << i << "_period ";
-      ofile << "Planet_" << i << "_a ";
-      ofile << "Planet_" << i << "_e ";
-      ofile << "Planet_" << i << "_I ";
-      ofile << "Planet_" << i << "_L0 ";
-      ofile << "Planet_" << i << "_w ";
-      ofile << "Planet_" << i << "_O ";
-      ofile << "Planet_" << i << "_dL ";
-      ofile << "Planet_" << i << "_q ";
-      ofile << "Planet_" << i << "_s0 ";
-      ofile << "Planet_" << i << "_x0 ";
-      ofile << "Planet_" << i << "_y0 ";
-      ofile << "Planet_" << i << "_z0 ";
-      ofile << "Planet_" << i << "_dsdt ";
-      ofile << "Planet_" << i << "_dalphadt ";
-      ofile << "Planet_" << i << "_dxdt ";
-      ofile << "Planet_" << i << "_dydt ";
-      ofile << "Planet_" << i << "_dzdt "; 
-      ofile << "Planet_" << i << "_orbtype ";
-    }
+  ofile << "Planet_mass Planet_period Planet_a Planet_e Planet_I Planet_L0 Planet_w Planet_O Planet_dL ";
+  ofile << "Planet_q Planet_s0 Planet_x0 Planet_y0 Planet_z0 Planet_dsdt Planet_dalphadt Planet_dxdt Planet_dydt Planet_dzdt Planet_orbtype ";
     
   //planet data - 7+1 = 38
   //for(int i=0;i<NPLANETINPUT+NPLANETDERIV;i++)
@@ -157,6 +142,7 @@ void writeHeader(struct filekeywords* Paramfile, struct event *Event, struct slc
 		<< "vtilde_helio_N" << " " << "vtilde_helio_E" << " " <<  "vtilde_ref_N" << " " << "vtilde_ref_E" << " " << "v_ref_N" << " " << "v_ref_E" << " "
 		<< "piEll" << " " << "piErp" << " "
 		<< "vt" << " " << "LDgamma" << " ";
+  ofile << "cb_t0 cb_u0 cb_tE cb_sb cb_sp cb_qb cb_qp cb_psi cb_rho cb_alpha ";
   //ofile << " | "; 
 
   //  int pheadcount=0;
@@ -348,43 +334,53 @@ void writeEventParams(struct filekeywords* Paramfile, struct obsfilekeywords Wor
 	}
     }
 
-  //int pdatacount=0;
-  
-  for(auto pdata : Planets->data[Event->id])
+  const int planet_i = selected_planet_index(Event);
+  if(planet_i>=0
+     && planet_i<int(Event->p_mass.size())
+     && planet_i<int(Event->p_period.size())
+     && planet_i<int(Event->p_a.size())
+     && planet_i<int(Event->p_e.size())
+     && planet_i<int(Event->p_I.size())
+     && planet_i<int(Event->p_L0.size())
+     && planet_i<int(Event->p_w.size())
+     && planet_i<int(Event->p_O.size())
+     && planet_i<int(Event->p_dL.size())
+     && planet_i<int(Event->p_q.size())
+     && planet_i<int(Event->p_s0.size())
+     && planet_i<int(Event->p_x0.size())
+     && planet_i<int(Event->p_y0.size())
+     && planet_i<int(Event->p_z0.size())
+     && planet_i<int(Event->p_dsdt.size())
+     && planet_i<int(Event->p_dalphadt.size())
+     && planet_i<int(Event->p_dxdt.size())
+     && planet_i<int(Event->p_dydt.size())
+     && planet_i<int(Event->p_dzdt.size())
+     && planet_i<int(Event->p_orbtype.size()))
     {
-      ofile << pdata << " ";
-      //int planetid=pdata;
-      //pdatacount++;
+      ofile << Event->p_mass[planet_i] << " ";
+      ofile << Event->p_period[planet_i] << " ";
+      ofile << Event->p_a[planet_i] << " ";
+      ofile << Event->p_e[planet_i] << " ";
+      ofile << Event->p_I[planet_i] << " ";
+      ofile << Event->p_L0[planet_i] << " ";
+      ofile << Event->p_w[planet_i] << " ";
+      ofile << Event->p_O[planet_i] << " ";
+      ofile << Event->p_dL[planet_i] << " ";
+      ofile << Event->p_q[planet_i] << " ";
+      ofile << Event->p_s0[planet_i] << " ";
+      ofile << Event->p_x0[planet_i] << " ";
+      ofile << Event->p_y0[planet_i] << " ";
+      ofile << Event->p_z0[planet_i] << " ";
+      ofile << Event->p_dsdt[planet_i] << " ";
+      ofile << Event->p_dalphadt[planet_i] << " ";
+      ofile << Event->p_dxdt[planet_i] << " ";
+      ofile << Event->p_dydt[planet_i] << " ";
+      ofile << Event->p_dzdt[planet_i] << " ";
+      ofile << Event->p_orbtype[planet_i] << " ";
     }
-
-
-  for(int i=0;i<Event->ncatalog_planets+Paramfile->multiple_lenses;i++)
+  else
     {
-      if(i<Event->nplanets + Event->lcompanions.size())
-	{
-	  ofile << Event->p_mass[i] << " ";
-	  ofile << Event->p_period[i] << " ";
-	  ofile << Event->p_a[i] << " ";
-	  ofile << Event->p_e[i] << " ";
-	  ofile << Event->p_I[i] << " ";
-	  ofile << Event->p_L0[i] << " ";
-	  ofile << Event->p_w[i] << " ";
-	  ofile << Event->p_O[i] << " ";
-	  ofile << Event->p_dL[i] << " ";
-	  ofile << Event->p_q[i] << " ";
-	  ofile << Event->p_s0[i] << " ";
-	  ofile << Event->p_x0[i] << " ";
-	  ofile << Event->p_y0[i] << " ";
-	  ofile << Event->p_z0[i] << " ";
-	  ofile << Event->p_dsdt[i] << " ";
-	  ofile << Event->p_dalphadt[i] << " ";
-	  ofile << Event->p_dxdt[i] << " ";
-	  ofile << Event->p_dydt[i] << " ";
-	  ofile << Event->p_dzdt[i] << " ";
-	  ofile << Event->p_orbtype[i] << " ";
-	}
-      else ofile << "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN ";
-	    
+      ofile << "NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN ";
     }
 
   //planet data - 7+1 = 38
@@ -425,7 +421,17 @@ void writeEventParams(struct filekeywords* Paramfile, struct obsfilekeywords Wor
 	<< Event->pllx[0].vtilde_h << " " << Event->pllx[0].vtilde_r << " " << Event->pllx[0].v_ref << " "
 	<< Event->pllx[0].vtilde_N_h << " " << Event->pllx[0].vtilde_E_h << " " <<  Event->pllx[0].vtilde_N_r << " " << Event->pllx[0].vtilde_E_r << " " << Event->pllx[0].v_ref_N << " " << Event->pllx[0].v_ref_E << " "
 	<< Event->pllx[0].piEll << " " << Event->pllx[0].piErp << " "
-	<< Event->vt << " " << Event->gamma << " "; 
+	<< Event->vt << " " << Event->gamma << " ";
+  write_num_or_nan(ofile, Event->cb_t0);
+  write_num_or_nan(ofile, Event->cb_u0);
+  write_num_or_nan(ofile, Event->cb_tE);
+  write_num_or_nan(ofile, Event->cb_sb);
+  write_num_or_nan(ofile, Event->cb_sp);
+  write_num_or_nan(ofile, Event->cb_qb);
+  write_num_or_nan(ofile, Event->cb_qp);
+  write_num_or_nan(ofile, Event->cb_psi);
+  write_num_or_nan(ofile, Event->cb_rho);
+  write_num_or_nan(ofile, Event->cb_alpha); 
   
   
   //weights - 3+1 = 46

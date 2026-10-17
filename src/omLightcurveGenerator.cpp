@@ -65,6 +65,114 @@ static bool handle_vbm_api_error(const char* api_name, struct filekeywords* Para
   return true;
 }
 
+static void clear_cb_params(struct event* Event)
+{
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  Event->cb_t0 = nan;
+  Event->cb_u0 = nan;
+  Event->cb_tE = nan;
+  Event->cb_sb = nan;
+  Event->cb_sp = nan;
+  Event->cb_qb = nan;
+  Event->cb_qp = nan;
+  Event->cb_psi = nan;
+  Event->cb_rho = nan;
+  Event->cb_alpha = nan;
+}
+
+static double wrap_deg_360(double a)
+{
+  a = std::fmod(a, 360.0);
+  if(a < 0.0) a += 360.0;
+  if(a >= 360.0) a -= 360.0;
+  return a;
+}
+
+static void fill_cb_params(struct event* Event, struct filekeywords* Paramfile,
+			   struct slcat* Lenses, int ln, int nlens,
+			   int star2_idx, int planet_idx,
+			   vector<vector<orbitalElements> >& l_elements,
+			   const vector<double>& l_delta,
+			   double sina, double cosa,
+			   double antipode_ra, double antipode_dec)
+{
+  clear_cb_params(Event);
+  if(star2_idx<0 || star2_idx>=nlens || star2_idx-1>=int(Event->p_mass.size()))
+    return;
+  if(!std::isfinite(Event->rE) || Event->rE<=0.0)
+    return;
+
+  const double M1 = Lenses->data[ln][Lenses->MASS];
+  const double M2 = Event->p_mass[star2_idx-1];
+  if(!(M1>0.0 && M2>0.0))
+    return;
+  const double qb = M2/M1;
+  const double thE_scale = std::sqrt((M1+M2)/M1);
+  if(!std::isfinite(qb) || !std::isfinite(thE_scale) || thE_scale<=0.0)
+    return;
+
+  vector<double> xl(nlens, 0.0);
+  vector<double> yl(nlens, 0.0);
+  const double jd = Event->tref + Paramfile->simulation_zerotime;
+  for(int i=0;i<nlens;i++)
+    {
+      vector<double> xp;
+      for(int j=0;j<int(l_elements[i].size());j++)
+	{
+	  l_elements[i][j].viewfrom(jd, antipode_ra, antipode_dec, &xp);
+	  xl[i] += xp[0];
+	  yl[i] += xp[1];
+	}
+      xl[i] /= Event->rE;
+      yl[i] /= Event->rE;
+    }
+
+  const double x_bin_com = (M1*xl[0] + M2*xl[star2_idx]) / (M1+M2);
+  const double y_bin_com = (M1*yl[0] + M2*yl[star2_idx]) / (M1+M2);
+  const double x2_thE = (xl[star2_idx] - x_bin_com) / thE_scale;
+  const double y2_thE = (yl[star2_idx] - y_bin_com) / thE_scale;
+  const double rot_b = atan2(y2_thE, x2_thE);
+  // rot_b is CoM → M2. Zero of cb_alpha is lighter → heavier along the binary axis.
+  const double zero_dir = (M2 > M1) ? rot_b : rot_b + pi;
+  Event->cb_alpha = wrap_deg_360(Event->alpha - (180.0/pi)*zero_dir);
+
+  if(planet_idx<0 || planet_idx>=nlens || planet_idx-1>=int(Event->p_mass.size()))
+    return;
+  const double Mp = Event->p_mass[planet_idx-1];
+  if(!(Mp>0.0))
+    return;
+  const double qp = Mp/(M1+M2);
+  if(!std::isfinite(qp))
+    return;
+
+  const double x1_thE = (xl[0] - x_bin_com) / thE_scale;
+  const double y1_thE = (yl[0] - y_bin_com) / thE_scale;
+  const double xp_thE = (xl[planet_idx] - x_bin_com) / thE_scale;
+  const double yp_thE = (yl[planet_idx] - y_bin_com) / thE_scale;
+  const double sb = qAdd(x2_thE - x1_thE, y2_thE - y1_thE);
+  const double cr_b = cos(-rot_b);
+  const double sr_b = sin(-rot_b);
+  const double xp_axis = cr_b * xp_thE - sr_b * yp_thE;
+  const double yp_axis = sr_b * xp_thE + cr_b * yp_thE;
+  const double sp = qAdd(xp_axis, yp_axis);
+  const double psi_rad = atan2(yp_axis, xp_axis);
+
+  const double dx0 = l_delta[0] - x_bin_com;
+  const double dy0 = l_delta[1] - y_bin_com;
+  const double u_cat = Event->u0 + dx0*sina - dy0*cosa;
+  const double tau_ca = -(dx0*cosa + dy0*sina);
+
+  Event->cb_qb = qb;
+  Event->cb_qp = qp;
+  Event->cb_tE = Event->tE_r * thE_scale;
+  Event->cb_rho = Event->rs / thE_scale;
+  Event->cb_sb = sb;
+  Event->cb_sp = sp;
+  Event->cb_psi = (180.0/pi) * psi_rad;
+  Event->cb_u0 = u_cat / thE_scale;
+  Event->cb_t0 = Event->t0 + tau_ca * Event->tE_r;
+}
+
 //void sleep_thread(int n)
 //{
 //  this_thread::sleep_for(chrono::milliseconds(n));
@@ -78,6 +186,7 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
   Event->skip_lc=0;
   Event->bad_scenario=0;
   Event->detected=0;
+  clear_cb_params(Event);
   Event->Atrue_bin.clear();
   Event->Atrue_pl.clear();
   Event->Atrueerr_bin.clear();
@@ -765,6 +874,17 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 
   
   Event->bad_scenario = bad_scenario;
+
+  int star2_idx = -1;
+  int planet_idx = -1;
+  for(int i=0;i<int(Event->p_orbtype.size());i++)
+    {
+      if(Event->p_orbtype[i]==-1) star2_idx = i+1;
+      else if(Event->p_orbtype[i]!=3 && Event->p_mass[i]>0.0) planet_idx = i+1;
+    }
+  fill_cb_params(Event, Paramfile, Lenses, ln, nlens, star2_idx, planet_idx,
+		 l_elements, l_delta, sina, cosa, antipode_ra, antipode_dec);
+
   // Unstable/unphysical configurations are discarded with a dedicated lcerror.
   if(bad_scenario > 0)
     {
@@ -812,13 +932,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
       return;
     }
 
-  int star2_idx = -1;
-  int planet_idx = -1;
-  for(int i=0;i<int(Event->p_orbtype.size());i++)
-    {
-      if(Event->p_orbtype[i]==-1) star2_idx = i+1;
-      else if(Event->p_orbtype[i]!=3 && Event->p_mass[i]>0.0) planet_idx = i+1;
-    }
   if(star2_idx<0 || planet_idx<0 || star2_idx>=nlens || planet_idx>=nlens)
     {
       Event->skip_lc = 1;

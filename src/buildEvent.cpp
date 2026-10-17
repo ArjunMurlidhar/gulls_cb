@@ -4,6 +4,7 @@
 This file contains functions that computes or collects the parameters required for the microlensing event. 
  */
 #include<string>
+#include<limits>
 
 #include "buildEvent.h"
 #include "strfns.h"
@@ -95,6 +96,9 @@ void buildEvent(struct event *Event, struct obsfilekeywords World[],
   Event->peakpoint=0;
   Event->skip_lc=0;
   Event->bad_scenario=0;
+  Event->cb_t0 = Event->cb_u0 = Event->cb_tE = Event->cb_sb = Event->cb_sp
+    = Event->cb_qb = Event->cb_qp = Event->cb_psi = Event->cb_rho = Event->cb_alpha
+    = std::numeric_limits<double>::quiet_NaN();
   Event->Atrue_bin.clear();
   Event->Atrue_pl.clear();
   Event->Atrueerr_bin.clear();

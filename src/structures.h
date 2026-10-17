@@ -322,6 +322,10 @@ struct event{
   //microlensing paramters
   double tref; //Reference time for parallax
   double u0, alpha, t0, tcroin, ucroin, rcroin, tE_h, tE_r, rE, thE, piE, piEN, piEE, rs, murel, murel_l, murel_b, vt, gamma;
+  // Binary-star CoM frame (θ_E of M1+M2). Planet-dependent fields NaN without a
+  // planet; all NaN with no stellar companion. cb_alpha: track angle in degrees
+  // [0,360) from the lighter→heavier binary axis at tref (not Event->alpha).
+  double cb_t0, cb_u0, cb_tE, cb_sb, cb_sp, cb_qb, cb_qp, cb_psi, cb_rho, cb_alpha;
   propermotionframe pm_lens;
   propermotionframe pm_source;
   //weights

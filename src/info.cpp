@@ -220,6 +220,8 @@ void writeHeader(struct filekeywords* Paramfile, struct event *Event, struct slc
       ofile << "ObsGroup_" << obsgroup << "_" << "chi2" << " ";
       ofile << "ObsGroup_" << obsgroup << "_" << "chi2_bin" << " ";
       ofile << "ObsGroup_" << obsgroup << "_" << "chi2_pl" << " ";
+      ofile << "ObsGroup_" << obsgroup << "_" << "flatchi2_bin" << " ";
+      ofile << "ObsGroup_" << obsgroup << "_" << "flatchi2_pl" << " ";
       ofile << Event->obsgroupoutputheader[obsgroup] << " ";
     }
   
@@ -521,7 +523,7 @@ void writeEventParams(struct filekeywords* Paramfile, struct obsfilekeywords Wor
       //what is being done here? 
       if(Event->skip_lc)
 	{
-	  ofile << "0 0 0 0 0 0 ";
+	  ofile << "0 0 0 0 0 0 0 0 ";
 	}
       else
 	{
@@ -529,7 +531,9 @@ void writeEventParams(struct filekeywords* Paramfile, struct obsfilekeywords Wor
 	    (!Event->flag_needFS[obsgroup]?Event->PSPL[obsgroup].chisq:Event->FSPL[obsgroup].chisq) << " ";
 	  double chi2_bin = (obsgroup < int(Event->chi2_bin.size()) ? Event->chi2_bin[obsgroup] : 0.0);
 	  double chi2_pl = (obsgroup < int(Event->chi2_pl.size()) ? Event->chi2_pl[obsgroup] : 0.0);
-	  ofile << chi2_bin << " " << chi2_pl << " ";
+	  double flatchi2_bin = (obsgroup < int(Event->flatchi2_bin.size()) ? Event->flatchi2_bin[obsgroup] : 0.0);
+	  double flatchi2_pl = (obsgroup < int(Event->flatchi2_pl.size()) ? Event->flatchi2_pl[obsgroup] : 0.0);
+	  ofile << chi2_bin << " " << chi2_pl << " " << flatchi2_bin << " " << flatchi2_pl << " ";
 	}
       ofile << Event->obsgroupoutput[obsgroup] << " ";
     }

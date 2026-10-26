@@ -95,6 +95,7 @@ int lightcurveFitter(struct filekeywords* Paramfile, struct obsfilekeywords Worl
     {
       Event->PSPL[obsgroup].chisq = 0;
       Event->flatchi2[obsgroup] = 0;
+      Event->Afit.assign(Event->nepochs, 0.0);
       delete[] fsblChi2obs;
       return GSL_SUCCESS;
     }
@@ -105,6 +106,7 @@ int lightcurveFitter(struct filekeywords* Paramfile, struct obsfilekeywords Worl
     {
       Event->flatlc[obsgroup]=1;
       Event->PSPL[obsgroup].chisq=0;
+      Event->Afit.assign(Event->nepochs, 0.0);
       delete[] fsblChi2obs;
       return GSL_SUCCESS;
     }
@@ -435,12 +437,20 @@ double fit_const(struct event *Event)
       //find the average
       if(startidx!=endidx && !Event->allsatobs[obsidx])
 	{
+	  // Same unsaturated epochs as fsblChi2. Saturated points stay out of the mean.
 	  for (idx=startidx;idx<endidx;idx++)
 	    {
-	      invs2 = 1.0/sqr(Event->Aerr[idx]);
-	      Asum += Event->Aobs[idx]*invs2;
-	      Esum += invs2;
+	      if(Event->nosat[idx])
+		{
+		  invs2 = 1.0/sqr(Event->Aerr[idx]);
+		  Asum += Event->Aobs[idx]*invs2;
+		  Esum += invs2;
+		}
 	    }
+
+	  // No usable epochs: do not divide; this observatory contributes 0.
+	  if(Esum==0)
+	    continue;
 
 	  C = Asum/Esum;
 

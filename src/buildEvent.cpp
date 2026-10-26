@@ -1149,6 +1149,8 @@ void setupObsGroups(struct filekeywords *Paramfile, struct event *Event)
   Event->flatlc.resize(Event->obsgroups.size());
   Event->chi2_bin.assign(Event->obsgroups.size(), 0.0);
   Event->chi2_pl.assign(Event->obsgroups.size(), 0.0);
+  Event->flatchi2_bin.assign(Event->obsgroups.size(), 0.0);
+  Event->flatchi2_pl.assign(Event->obsgroups.size(), 0.0);
   Event->obsgroupoutput.clear();
   Event->obsgroupoutput.resize(Event->obsgroups.size(),string(""));
   Event->obsgroupoutputheader.clear();

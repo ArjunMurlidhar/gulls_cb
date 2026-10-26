@@ -412,6 +412,8 @@ struct event{
   vector<double> Afit_pl;
   vector<double> chi2_bin;
   vector<double> chi2_pl;
+  vector<double> flatchi2_bin;
+  vector<double> flatchi2_pl;
   vector<bool> nosat;      /*Is point unsaturated? */
   vector<double> backmag;
   vector<double> dF;

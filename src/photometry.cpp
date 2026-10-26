@@ -96,9 +96,7 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
 	  double nci_bin, ncs_bin, nci_pl, ncs_pl, erri_pl;
 	  int satflag_pl = 0;
 	  World[obsidx].im.fast_photometry(mag_bin, &nci_bin, &ncs_bin, &erri, &satflag);
-	  World[obsidx].im.fast_photometry(mag_pl, &nci_pl, &ncs_pl, &erri_pl, &satflag_pl, true);
-	  const double eps = ncs_bin - nci_bin;
-	  ncs_pl = nci_pl + eps;
+	  World[obsidx].im.fast_photometry(mag_pl, &nci_pl, &ncs_pl, &erri_pl, &satflag_pl);
 	  if(satflag_pl) satflag = 1;
 	  errs = erri;
 
@@ -109,9 +107,9 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
 	  Event->Aobs_bin[idx] = ncs_bin/baseline;
 	  Event->Aerr_bin[idx] = errs/baseline;
 	  Event->Atrue_pl[idx] = nci_pl/baseline;
-	  Event->Atrueerr_pl[idx] = erri/baseline;
 	  Event->Aobs_pl[idx] = ncs_pl/baseline;
-	  Event->Aerr_pl[idx] = errs/baseline;
+	  Event->Atrueerr_pl[idx] = erri_pl/baseline;
+	  Event->Aerr_pl[idx] = erri_pl/baseline;
 	  Event->Atrue[idx] = Event->Atrue_bin[idx];
 	  Event->Atrueerr[idx] = Event->Atrueerr_bin[idx];
 	  Event->Aobs[idx] = Event->Aobs_bin[idx];
@@ -186,7 +184,6 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
 	      Event->Atrueerr_bin[idx] = Event->Atrueerr[idx];
 	      Event->Aobs_bin[idx] = Event->Aobs[idx];
 	      Event->Aerr_bin[idx] = Event->Aerr[idx];
-	      const double eps = Event->Aobs[idx] - Event->Atrue[idx];
 	      const double mag_pl = Event->Atrue_pl[idx];
 	      World[obsidx].im.set_background(Event->backmag[idx]);
 	      World[obsidx].im.addbg();
@@ -199,15 +196,22 @@ void photometry(struct filekeywords* Paramfile, struct event *Event, struct obsf
 	      if(World[obsidx].photcode<2)
 		{
 		  Event->Atrue_pl[idx] = phot[0]/baseline;
-		  Event->Atrueerr_pl[idx] = Event->Atrueerr_bin[idx];
+		  Event->Atrueerr_pl[idx] = phot[1]/baseline;
+		  Event->Aobs_pl[idx] = phot[2]/baseline;
+		  Event->Aerr_pl[idx] = phot[3]/baseline;
 		}
 	      else
 		{
 		  Event->Atrue_pl[idx] = phot[4]/baseline;
-		  Event->Atrueerr_pl[idx] = Event->Atrueerr_bin[idx];
+		  Event->Atrueerr_pl[idx] = phot[5]/baseline;
+		  Event->Aobs_pl[idx] = phot[6]/baseline;
+		  Event->Aerr_pl[idx] = phot[7]/baseline;
 		}
-	      Event->Aobs_pl[idx] = Event->Atrue_pl[idx] + eps;
-	      Event->Aerr_pl[idx] = Event->Aerr_bin[idx];
+	      if(World[obsidx].photcode%2==0)
+		{
+		  Event->Aobs_pl[idx] = Event->Atrue_pl[idx];
+		  Event->Aerr_pl[idx] = Event->Atrueerr_pl[idx];
+		}
 	      if(satflag_pl) satflag = 1;
 	      World[obsidx].im.substar(Event->xsub[obsidx], Event->ysub[obsidx], ampmag);
 	      World[obsidx].im.subbg();

@@ -95,6 +95,7 @@ int lightcurveFitter(struct filekeywords* Paramfile, struct obsfilekeywords Worl
     {
       Event->PSPL[obsgroup].chisq = 0;
       Event->flatchi2[obsgroup] = 0;
+      Event->Afit.assign(Event->nepochs, 0.0);
       delete[] fsblChi2obs;
       return GSL_SUCCESS;
     }
@@ -105,6 +106,7 @@ int lightcurveFitter(struct filekeywords* Paramfile, struct obsfilekeywords Worl
     {
       Event->flatlc[obsgroup]=1;
       Event->PSPL[obsgroup].chisq=0;
+      Event->Afit.assign(Event->nepochs, 0.0);
       delete[] fsblChi2obs;
       return GSL_SUCCESS;
     }

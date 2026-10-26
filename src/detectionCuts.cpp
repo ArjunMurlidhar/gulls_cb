@@ -19,6 +19,8 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 			&& Event->Atrue_pl.size()==size_t(Event->nepochs));
   Event->chi2_bin.assign(Event->obsgroups.size(), 0.0);
   Event->chi2_pl.assign(Event->obsgroups.size(), 0.0);
+  Event->flatchi2_bin.assign(Event->obsgroups.size(), 0.0);
+  Event->flatchi2_pl.assign(Event->obsgroups.size(), 0.0);
   if(dual_lc)
     {
       Event->Afit_bin.assign(Event->nepochs, 0.0);
@@ -62,6 +64,7 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 	  Event->Aerr = Event->Aerr_bin;
 	  Event->Atrueerr = Event->Atrueerr_bin;
 	  double chi2_bin = fit_current_series(obsgroup);
+	  Event->flatchi2_bin[obsgroup] = Event->flatchi2[obsgroup];
 	  Event->chi2_bin[obsgroup] = chi2_bin;
 	  Event->Afit_bin = Event->Afit;
 
@@ -70,6 +73,7 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 	  Event->Aerr = Event->Aerr_pl;
 	  Event->Atrueerr = Event->Atrueerr_pl;
 	  double chi2_pl = fit_current_series(obsgroup);
+	  Event->flatchi2_pl[obsgroup] = Event->flatchi2[obsgroup];
 	  Event->chi2_pl[obsgroup] = chi2_pl;
 	  Event->Afit_pl = Event->Afit;
 
@@ -79,7 +83,7 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 	  Event->Atrueerr = Event->Atrueerr_bin;
 	  Event->Afit = Event->Afit_bin;
 
-	  if(chi2_bin > Paramfile->minChiSquared && chi2_pl > Paramfile->minChiSquared)
+	  if(chi2_bin > Paramfile->minChiSquared || chi2_pl > Paramfile->minChiSquared)
 	    Event->detected=1;
 	}
       else

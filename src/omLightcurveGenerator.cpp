@@ -1182,13 +1182,16 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	  const double y1_pl = z_vbm.real();
 	  const double y2_pl = z_vbm.imag();
 	  const double rho_VB = rho_bin / sqrt(1.0 + qp);
+	  // s_eff is in the stellar-binary Einstein radius. Planet BinaryMag2
+	  // wants the Einstein radius of the effective host plus planet.
+	  const double s_pl = eff.s_eff / sqrt(1.0 + qp);
 
 	  if(Paramfile->skip_magnification==0)
 	    {
 	      if(!std::isfinite(sb) || !std::isfinite(q_vbm) || !std::isfinite(y1_a) || !std::isfinite(y2_a)
 		 || !std::isfinite(rho_bin) || sb <= 0.0 || q_vbm <= 0.0 || rho_bin < 0.0
-		 || !std::isfinite(eff.s_eff) || !std::isfinite(y1_pl) || !std::isfinite(y2_pl)
-		 || !std::isfinite(rho_VB) || eff.s_eff <= 0.0 || rho_VB < 0.0)
+		 || !std::isfinite(s_pl) || !std::isfinite(y1_pl) || !std::isfinite(y2_pl)
+		 || !std::isfinite(rho_VB) || s_pl <= 0.0 || rho_VB < 0.0)
 		{
 		  cb_input_error();
 		  return;
@@ -1202,7 +1205,7 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 		  return;
 		}
 
-	      mu_pl[is] = Event->vbm->BinaryMag2(eff.s_eff, qp, y1_pl, y2_pl, rho_VB);
+	      mu_pl[is] = Event->vbm->BinaryMag2(s_pl, qp, y1_pl, y2_pl, rho_VB);
 	      if(handle_vbm_api_error("BinaryMag2", Paramfile, Event, logfile_ptr, Event->vbm))
 		{
 		  delete[] lens_parameters;

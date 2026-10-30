@@ -1027,7 +1027,7 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
       double xs0 = uu * sina + tt * cosa;
       double ys0 = -uu * cosa + tt * sina;
 
-      //Shift from CoM origin to lens1@tref origin
+      //Shift the track from the lens-1 origin onto the barycenter
       xs0 += l_delta[0]; //already in units of Einstein ring
       ys0 += l_delta[1];
 
@@ -1166,8 +1166,8 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	  if(is==0) rho = Event->rs;
 	  else rho = Event->scomp_rs[is-1];
 
-	  const double xs_com = xs[is] + l_delta[0];
-	  const double ys_com = ys[is] + l_delta[1];
+	  const double xs_com = xs[is];
+	  const double ys_com = ys[is];
 	  const double xs_thE = (xs_com - x_bin_com) / thE_scale;
 	  const double ys_thE = (ys_com - y_bin_com) / thE_scale;
 	  const double rho_bin = rho / thE_scale;

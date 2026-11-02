@@ -163,7 +163,7 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 	  Event->Atrueerr = Event->Atrueerr_bin;
 	  Event->Afit = Event->Afit_bin;
 
-	  if(chi2_bin > Paramfile->minChiSquared || chi2_pl > Paramfile->minChiSquared)
+	  if(chi2_bin > Paramfile->minChiSquared && chi2_pl > Paramfile->minChiSquared)
 	    Event->detected=1;
 	}
       else

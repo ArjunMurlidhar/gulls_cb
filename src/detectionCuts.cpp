@@ -3,6 +3,7 @@
 #include "cbEffectiveLens.h"
 
 #include <algorithm>
+#include <cmath>
 
 // Same condition as the upeak override in the PSPL and FSPL fitters.
 // obsidx is the last observatory of the current group, which is what those
@@ -96,7 +97,30 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 	  Event->Aobs = Event->Aobs_bin;
 	  Event->Aerr = Event->Aerr_bin;
 	  Event->Atrueerr = Event->Atrueerr_bin;
+
+	  // Binary series: center of mass and total-mass Einstein time.
+	  // cb_u0 is the signed gulls impact parameter. Restore the catalog
+	  // primary afterward so the planet-host seed and later groups are
+	  // unchanged. Parallax seeds (piEN, piEE) are not touched. The
+	  // companion upeak/tpeak override does not replace these seeds.
+	  const double catalog_u0 = Event->u0;
+	  const double catalog_t0 = Event->t0;
+	  const double catalog_tE = Event->tE_r;
+	  const int catalog_multiple_sources = Paramfile->multiple_sources;
+	  if(std::isfinite(Event->cb_t0) && std::isfinite(Event->cb_u0)
+	     && std::isfinite(Event->cb_tE) && Event->cb_tE > 0.0)
+	    {
+	      Event->u0 = Event->cb_u0;
+	      Event->t0 = Event->cb_t0;
+	      Event->tE_r = Event->cb_tE;
+	      if(companion_upeak_replaces_seed(Paramfile, World, Event))
+		Paramfile->multiple_sources = 0;
+	    }
 	  double chi2_bin = fit_current_series(obsgroup);
+	  Event->u0 = catalog_u0;
+	  Event->t0 = catalog_t0;
+	  Event->tE_r = catalog_tE;
+	  Paramfile->multiple_sources = catalog_multiple_sources;
 	  Event->flatchi2_bin[obsgroup] = Event->flatchi2[obsgroup];
 	  Event->chi2_bin[obsgroup] = chi2_bin;
 	  Event->Afit_bin = Event->Afit;
@@ -106,13 +130,10 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
 	  Event->Aerr = Event->Aerr_pl;
 	  Event->Atrueerr = Event->Atrueerr_pl;
 
-	  // Planet series only: t0, u0, tE of the effective host. The binary
-	  // series above already used the catalog primary. Put those back
-	  // before the next group so it is not left on the host seeds.
-	  const double catalog_u0 = Event->u0;
-	  const double catalog_t0 = Event->t0;
-	  const double catalog_tE = Event->tE_r;
-	  const int catalog_multiple_sources = Paramfile->multiple_sources;
+	  // Planet series only: tE = cb_tE and signed t0/u0 at the effective
+	  // host. Catalog u0, t0, and tE_r are already restored. Put them
+	  // back again before the next group. The upeak/tpeak override does
+	  // not replace these host seeds.
 	  double host_u0 = 0.0;
 	  double host_t0 = 0.0;
 	  double host_tE = 0.0;

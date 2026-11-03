@@ -150,7 +150,7 @@ int lightcurveFitter_FS(struct filekeywords* Paramfile, struct obsfilekeywords W
   gsl_vector_set (ss,0, abs(gsl_vector_get(x,0))/100.0);
   gsl_vector_set (ss,1, t0step);
   gsl_vector_set (ss,2, abs(gsl_vector_get(x,2))/100.0);
-  gsl_vector_set (ss,2, abs(gsl_vector_get(x,3))/100.0);
+  gsl_vector_set (ss,3, abs(gsl_vector_get(x,3))/100.0);
    
   /* Initialize method and iterate */
   minex_func.f = &my_f_FS;

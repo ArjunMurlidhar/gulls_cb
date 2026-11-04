@@ -3,6 +3,18 @@
 
 #include <math.h>
 
+// Absolute value of a signed idum as unsigned long, including magnitudes
+// above 2^31-1 and LONG_MIN. Clock seeds are stored negative.
+inline unsigned long random_seed_magnitude(long idum)
+{
+  if(idum >= 0) return static_cast<unsigned long>(idum);
+  return static_cast<unsigned long>(-(idum + 1L)) + 1UL;
+}
+
+// Seed the shared GSL mt19937 from an unsigned magnitude. ran1/ran2/gasdev/
+// poisson do not reseed; a later negative idum must not restart the generator.
+void seed_random(unsigned long seed);
+
 float ran1(long *idum);
 float gasdev(long *idum);
 float ran3(long *idum);

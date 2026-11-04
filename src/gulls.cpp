@@ -349,8 +349,13 @@ int main(int argc, char *argv[]){                   /* BEGIN MAIN */
       fmtline(str,WIDTH,"PARAMFILE");
     }
 
+  // One seed for both paths. The clock value is negative and can exceed
+  // 2^31-1, so pass its unsigned magnitude. Do not negate idum afterwards:
+  // ran2/gasdev/poisson no longer reseed, and a sign flip used to restart
+  // MT19937 at seed 1.
+  seed_random(random_seed_magnitude(var));
+
   ran2(idum);
-  var = -var;
   gasdev(idum);
 
   /* Warmup random number generator */

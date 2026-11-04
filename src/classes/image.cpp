@@ -277,6 +277,8 @@ void image::reseed(long x)
 	{
 	  *seed = x;
 	}
+      // ran2 no longer reseeds from a negative idum.
+      seed_random(random_seed_magnitude(*seed));
       ran2(seed);
       ran2(seed);
     }

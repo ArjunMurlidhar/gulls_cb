@@ -13,12 +13,20 @@
 // Global GSL random number generator for fallback
 static gsl_rng* gsl_rng_fallback = nullptr;
 
-// Initialize fallback RNG if not already done
+// Initialize fallback RNG if not already done. Does not change a seed
+// installed by seed_random().
 static void init_fallback_rng() {
     if (gsl_rng_fallback == nullptr) {
         gsl_rng_fallback = gsl_rng_alloc(gsl_rng_mt19937);
         gsl_rng_set(gsl_rng_fallback, 12345); // Default seed
     }
+}
+
+void seed_random(unsigned long seed) {
+    if (gsl_rng_fallback == nullptr) {
+        gsl_rng_fallback = gsl_rng_alloc(gsl_rng_mt19937);
+    }
+    gsl_rng_set(gsl_rng_fallback, seed);
 }
 
 // Cleanup function (called at program exit)
@@ -41,22 +49,14 @@ float bounded_uniform_float() {
 }
 
 float ran1(long *idum) {
+    (void)idum;
     init_fallback_rng();
-    // Only reseed if idum is negative (NR convention for initialization)
-    if (idum && *idum < 0) {
-        gsl_rng_set(gsl_rng_fallback, -(*idum));
-        *idum = 1; // Mark as initialized
-    }
     return bounded_uniform_float();
 }
 
 float ran2(long *idum) {
+    (void)idum;
     init_fallback_rng();
-    // Only reseed if idum is negative (NR convention for initialization)
-    if (idum && *idum < 0) {
-        gsl_rng_set(gsl_rng_fallback, -(*idum));
-        *idum = 1; // Mark as initialized
-    }
     return bounded_uniform_float();
 }
 
@@ -65,12 +65,8 @@ float ran3(long *idum) {
 }
 
 float gasdev(long *idum) {
+    (void)idum;
     init_fallback_rng();
-    // Only reseed if idum is negative (NR convention for initialization)
-    if (idum && *idum < 0) {
-        gsl_rng_set(gsl_rng_fallback, -(*idum));
-        *idum = 1; // Mark as initialized
-    }
     return gsl_ran_gaussian(gsl_rng_fallback, 1.0);
 }
 
@@ -80,11 +76,7 @@ double gammln(double xx) {
 }
 
 double poisson(double mean, long *idum) {
+    (void)idum;
     init_fallback_rng();
-    // Only reseed if idum is negative (NR convention for initialization)
-    if (idum && *idum < 0) {
-        gsl_rng_set(gsl_rng_fallback, -(*idum));
-        *idum = 1; // Mark as initialized
-    }
     return gsl_ran_poisson(gsl_rng_fallback, mean);
 }

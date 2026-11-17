@@ -10,7 +10,9 @@ weight, and, for each observatory group i,
     ObsGroup_<i>_flatchi2_pl
 
 Each .out file is read once. A field's norm is the sum of raw_weight over every
-event in that field. Files that cannot be parsed are skipped.
+event in that field. Files that cannot be parsed are skipped, and so are files
+whose names end with _discarded.out. Discarded files do not enter the norm,
+the weights, or any HDF5 table.
 
 final_weight = (nevents_per_tile / norm) * weight
 norm_weight  = raw_weight / norm
@@ -417,6 +419,10 @@ def collect_out_files(outfiledir, n_groups, bad_weights, limit):
     with os.scandir(outfiledir) as entries:
         for entry in entries:
             if not entry.is_file() or not entry.name.endswith('.out'):
+                continue
+            if entry.name.endswith('_discarded.out'):
+                print(f'Skipping {entry.name}; discarded output is excluded')
+                n_skip += 1
                 continue
             data = read_out_file(entry.path, n_groups, bad_weights)
             if data is None:

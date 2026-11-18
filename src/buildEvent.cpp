@@ -465,7 +465,8 @@ void drawsl(struct filekeywords* Paramfile, struct obsfilekeywords World[], stru
 	      //Look for the secondary
 	      for(int i=0;i<Sources->data.size();i++)
 		{
-		  if(Sources->data[i][Sources->datadict["primary_ID"]]==Sources->data[sn][Sources->datadict["ID"]])
+		  // Primaries may list their own ID as primary_ID.
+		  if(i!=sn && Sources->data[i][Sources->datadict["primary_ID"]]==Sources->data[sn][Sources->datadict["ID"]])
 		    {
 		      if(Paramfile->verbosity>2) cout << "Adding star " << i << " to source system." << endl;
 		      Event->scompanions.push_back(i);

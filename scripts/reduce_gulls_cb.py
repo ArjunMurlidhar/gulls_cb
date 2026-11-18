@@ -146,9 +146,34 @@ def load_rates_catalog(path):
     ).set_index('ID_src')
     rates = normalize_field_index(rates)
     rates['nevents_per_tile'] = pd.to_numeric(rates['nevents_per_tile'], errors='coerce')
-    if rates['nevents_per_tile'].isna().any():
-        sys.exit(f'Rates file has a non-numeric nevents_per_tile: {path}')
-    return rates
+    nan_mask = rates['nevents_per_tile'].isna()
+    dropped_ids = []
+    if nan_mask.any():
+        dropped_ids = sorted(int(field) for field in rates.index[nan_mask])
+        print(
+            f'Dropping {int(nan_mask.sum())} rates row(s) with NaN nevents_per_tile: '
+            f'ID_src {dropped_ids}'
+        )
+        rates = rates.loc[~nan_mask]
+    return rates, dropped_ids
+
+
+def filter_dropped_field_events(frames, dropped_ids):
+    if not dropped_ids:
+        return frames
+    dropped = set(int(field) for field in dropped_ids)
+    kept = []
+    for data in frames:
+        mask = ~data['Field'].isin(dropped)
+        n_drop = int((~mask).sum())
+        if n_drop:
+            fields = sorted(int(field) for field in data.loc[~mask, 'Field'].unique())
+            print(f'Skipping {n_drop} event(s) with Field in dropped rates IDs: {fields}')
+        data = data.loc[mask]
+        if len(data) == 0:
+            continue
+        kept.append(data)
+    return kept
 
 
 def load_saved_rates(path):
@@ -525,9 +550,10 @@ def main():
         if not base:
             sys.exit('GULLS_BASE_DIR is not set')
         rates_path = os.path.abspath(os.path.join(base, paramfile['RATES_FILE']))
-        rates = load_rates_catalog(rates_path)
+        rates, dropped_field_ids = load_rates_catalog(rates_path)
         rates = attach_covering_factors(rates, args.covfac)
         frames = collect_out_files(outfiledir, len(group_names), args.ffp_bad_weights, args.limit)
+        frames = filter_dropped_field_events(frames, dropped_field_ids)
         missing = fields_missing_from_rates(frames, rates)
         if missing:
             sys.exit(f'Fields {missing} are not in the rates file {rates_path}')

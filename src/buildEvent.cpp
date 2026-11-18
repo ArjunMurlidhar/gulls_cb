@@ -619,7 +619,8 @@ void drawsl(struct filekeywords* Paramfile, struct obsfilekeywords World[], stru
 	      if(Paramfile->verbosity>2) cout << "and is the primary." << endl;
 	      for(int i=0;i<Lenses->data.size();i++)
 		{
-		  if(Lenses->data[i][Lenses->datadict["primary_ID"]]==Lenses->data[ln][Lenses->datadict["ID"]])
+		  // Primaries may list their own ID as primary_ID.
+		  if(i!=ln && Lenses->data[i][Lenses->datadict["primary_ID"]]==Lenses->data[ln][Lenses->datadict["ID"]])
 		    {
 		      if(Paramfile->verbosity>2) cout << "Adding star " << i << " to lens system." << endl;
 		      Event->lcompanions.push_back(i);

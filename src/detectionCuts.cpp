@@ -75,7 +75,9 @@ void detectionCuts(struct filekeywords* Paramfile, struct event *Event, struct o
     {
       lightcurveFitter(Paramfile, World, Event);
       reset_pllx();
-      if(abs(Event->umin) < 10*Event->rs && Event->PSPL[obsgroup].chisq>Paramfile->minChiSquared)
+      // No |umin| < 10 rs gate: planetary perturbations can show finite-source
+      // effects far from the peak.
+      if(Event->PSPL[obsgroup].chisq>Paramfile->minChiSquared)
 	{
 	  Event->flag_needFS[obsgroup]=1;
 	  lightcurveFitter_FS(Paramfile, World, Event);

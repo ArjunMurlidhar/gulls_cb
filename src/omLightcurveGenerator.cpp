@@ -186,6 +186,10 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
   Event->skip_lc=0;
   Event->bad_scenario=0;
   Event->detected=0;
+  Event->moons = 0;
+  Event->circumbinary=0;
+  Event->distantbinary=0;
+  Event->mixedbinary=0;
   clear_cb_params(Event);
   Event->Atrue_bin.clear();
   Event->Atrue_pl.clear();
@@ -212,11 +216,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
 	 << Event->vbm->RelTol 
 	 << endl;
 
-  //if the event is saturated in each band, no need to calculate the lightcurve
-  if(Event->nepochs==0 || Event->allsat)
-    {
-      return;
-    }
   vector<int> idxshift;
   int shiftedidx;
   const double timeout = Paramfile->lc_timeout;
@@ -242,11 +241,6 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
   Event->xc_srcs_only.clear();
   Event->yc_srcs_only.clear();
   Event->src_flux_total.clear();
-
-  Event->moons = 0;
-  Event->circumbinary=0;
-  Event->distantbinary=0;
-  Event->mixedbinary=0;
   
   //Conventions:
   //Track the apparent motion of the centers of mass of the source and lens, then compute offsets from them
@@ -941,6 +935,19 @@ void lightcurveGenerator(struct filekeywords* Paramfile, struct event *Event, st
       if(Paramfile->verbosity >= 1)
 	{
 	  cout << "Lightcurve generation skipped (missing stellar companion or planet index), event " << Event->id << endl;
+	}
+      delete[] lens_parameters;
+      return;
+    }
+
+  // Stable P-type with nothing to measure: params go to the main outfile with
+  // skip_lc=0 so the status column still reports allsat / no epochs.
+  if(Event->nepochs==0 || Event->allsat)
+    {
+      if(Paramfile->verbosity >= 1)
+	{
+	  cout << "Lightcurve generation skipped (stable P-type, nepochs=" << Event->nepochs
+	       << ", allsat=" << Event->allsat << "), event " << Event->id << endl;
 	}
       delete[] lens_parameters;
       return;

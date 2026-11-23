@@ -3,6 +3,10 @@
 # draws (those IDs differ) are stored with raw_weight, weight, final_weight,
 # and norm_weight set to 0, so they do not enter final_rate, detection rates,
 # or stable sums. Source columns are not changed.
+#
+# Analysis products use a .primary_lens suffix on the run name, so a run
+# cb_full_1.0 writes cb_full_1.0.primary_lens.out.hdf5, .det.hdf5,
+# .stable.hdf5, and .det.rates instead of the unsuffixed files.
 
 """Reweight a circumbinary gulls run and write detection and stable-system catalogs.
 
@@ -38,8 +42,10 @@ group i contributes a row to its .det table when chi2_bin or chi2_pl is greater
 than CUT. both_above_cut is true only when both are greater than CUT.
 
 Stable P-type systems are the events whose light curves were generated. They
-are written to one table, "stable", in {RUN_NAME}.stable.hdf5. A row is included
-when flatchi2_bin or flatchi2_pl is non-zero for any observatory group.
+are written to one table, "stable", in {RUN_NAME}.primary_lens.stable.hdf5.
+A row is included when flatchi2_bin or flatchi2_pl is non-zero for any
+observatory group. The other analysis files are {RUN_NAME}.primary_lens.out.hdf5,
+{RUN_NAME}.primary_lens.det.hdf5, and {RUN_NAME}.primary_lens.det.rates.
 """
 
 import argparse
@@ -505,7 +511,9 @@ def output_directories(paramfile, in_raw):
         sys.exit(f'{run_dir} does not exist')
     for subdir in ('analysis', 'raw', 'lc', 'fm', 'logs'):
         os.makedirs(os.path.join(run_dir, subdir), exist_ok=True)
-    outroot = os.path.join(run_dir, 'analysis', run_name)
+    # Suffix the analysis stem so these products cannot replace
+    # {RUN_NAME}.out.hdf5, .det.hdf5, .stable.hdf5, or .det.rates.
+    outroot = os.path.join(run_dir, 'analysis', run_name + '.primary_lens')
     if in_raw:
         outfiledir = os.path.join(run_dir, 'raw')
     else:
@@ -621,6 +629,11 @@ def main():
 
     outroot, outfiledir = output_directories(paramfile, args.in_raw)
     print(f'Looking for .out files in {outfiledir}')
+    print(
+        'Primary-lens analysis files: '
+        f'{outroot}.out.hdf5 {outroot}.det.hdf5 '
+        f'{outroot}.stable.hdf5 {outroot}.det.rates'
+    )
 
     if args.recut:
         rates = load_saved_rates(outroot + '.det.rates')

@@ -151,6 +151,30 @@ class TestPrimaryLensWeights(unittest.TestCase):
         self.assertEqual(float(out.loc[0, 'norm_weight']), 0.0)
         self.assertEqual(float(rates.loc[2, 'final_rate']), 0.0)
 
+    def test_analysis_products_use_primary_lens_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = os.path.join(tmp, 'cb_full_1.0')
+            os.makedirs(run_dir)
+            outroot, outfiledir = self.mod.output_directories(
+                {'RUN_NAME': 'cb_full_1.0', 'FINAL_DIR': tmp},
+                False,
+            )
+            self.assertEqual(outfiledir, os.path.abspath(run_dir))
+            self.assertEqual(
+                outroot,
+                os.path.join(os.path.abspath(run_dir), 'analysis', 'cb_full_1.0.primary_lens'),
+            )
+            names = [
+                os.path.basename(outroot + ending)
+                for ending in ('.out.hdf5', '.det.hdf5', '.stable.hdf5', '.det.rates')
+            ]
+        self.assertEqual(names, [
+            'cb_full_1.0.primary_lens.out.hdf5',
+            'cb_full_1.0.primary_lens.det.hdf5',
+            'cb_full_1.0.primary_lens.stable.hdf5',
+            'cb_full_1.0.primary_lens.det.rates',
+        ])
+
     def test_missing_lens_id_column_exits(self):
         data = pd.DataFrame({
             'raw_weight': [1.0],

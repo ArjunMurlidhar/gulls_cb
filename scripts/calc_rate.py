@@ -34,6 +34,8 @@ s_mul = source_data['mul'].to_numpy()
 s_mub = source_data['mub'].to_numpy()
 nsource = s_D.shape[0]
 
+if nsource == 0 or nlens == 0:
+    sys.exit("calc_rate.py: no usable stars (nsource=%d, nlens=%d)" % (nsource, nlens))
 
 lidx = np.searchsorted(l_D,s_D,side='left')
 #print(lidx)
@@ -61,21 +63,29 @@ for s in range(nsource):
     rE = (rEsun*np.sqrt(Ds)) * np.sqrt(l_M[:lidx[s]] * (1-x) * x)
     thE = rE/l_D[:lidx[s]]
     murel = np.sqrt((l_mul[:lidx[s]]-muls)**2+(l_mub[:lidx[s]]-mubs)**2)
-    tE = 365.25 * thE/murel
     w = 2 * thE * murel
 
     tauD[s] = np.sum(thE**2) * np.pi / (1000**2 * lens_area*3600**2)
     tau += tauD[s]
     wsum += np.sum(w)
-    tEmean += np.sum(w*tE)
-    murelmean += np.sum(w*murel)
+    # drawsl also rejects a pair with identical proper motion. Those pairs
+    # have zero weight, but 0 * (theta_E / mu_rel) is NaN and would wipe tEmean.
+    moving = murel > 0
+    if np.any(moving):
+        tE = 365.25 * thE[moving]/murel[moving]
+        tEmean += np.sum(w[moving]*tE)
+        murelmean += np.sum(w[moving]*murel[moving])
 
 
 #Unit conversions and constant multipliers
 #tau = Sum pi thE^2/lens area averaged over sources. thE in mas, lens_area in sq deg
 tau /= nsource 
-tEmean /= wsum
-murelmean /= wsum
+if wsum == 0:
+    tEmean = float('nan')
+    murelmean = float('nan')
+else:
+    tEmean /= wsum
+    murelmean /= wsum
 
 nevents_per_tile = wsum * 1.0e-6 / (lens_area*3600**2) * (map_spacing**2/source_area)
 nevents_per_source = nevents_per_tile / (map_spacing**2*nsource/source_area)
@@ -92,4 +102,3 @@ kpcidx = np.searchsorted(s_D,np.arange(1,16,2))
 
     
     
-

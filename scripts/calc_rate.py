@@ -7,34 +7,7 @@ if len(sys.argv)!=5:
     sys.exit()
 
 
-def read_sources(path):
-    # Gulls draws every catalog row, including binary companions (Is_Binary==2),
-    # and uses that row's component Mass. It rejects a source whose first
-    # magnitude is >= 99 (drawsl). Those rows are synthpop sentinels, common
-    # for one member of a binary, and are not part of the simulated sample.
-    # Catalogs with no sentinel magnitudes are unchanged.
-    with open(path) as handle:
-        header = handle.readline().split()
-    if not header:
-        sys.exit("calc_rate.py: empty source catalog %s" % path)
-    mag_column = header[0]
-    columns = ['Dist', 'mul', 'mub']
-    if mag_column not in columns:
-        columns.append(mag_column)
-    data = pd.read_csv(path, sep='\s+', usecols=columns)
-    if mag_column not in ('Dist', 'mul', 'mub'):
-        keep = data[mag_column] < 99.0
-        dropped = int((~keep).sum())
-        if dropped:
-            sys.stderr.write(
-                "calc_rate.py: dropped %d source row(s) with %s>=99 from %s\n"
-                % (dropped, mag_column, path)
-            )
-        data = data.loc[keep]
-    return data.sort_values('Dist', kind='mergesort')
-
-
-source_data = read_sources(sys.argv[1])
+source_data = pd.read_csv(sys.argv[1],sep='\s+',usecols=['Dist','mul','mub']).sort_values('Dist',kind='mergesort')
 source_area = float(sys.argv[2])
 lens_data = pd.read_csv(sys.argv[3],sep='\s+',usecols=['Dist','mul','mub','Mass']).sort_values('Dist',kind='mergesort')
 lens_area = float(sys.argv[4])

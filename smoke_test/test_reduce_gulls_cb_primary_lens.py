@@ -151,6 +151,30 @@ class TestPrimaryLensWeights(unittest.TestCase):
         self.assertEqual(float(out.loc[0, 'norm_weight']), 0.0)
         self.assertEqual(float(rates.loc[2, 'final_rate']), 0.0)
 
+    def test_analysis_products_use_primary_lens_suffix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = os.path.join(tmp, 'cb_full_1.0')
+            os.makedirs(run_dir)
+            outroot, outfiledir = self.mod.output_directories(
+                {'RUN_NAME': 'cb_full_1.0', 'FINAL_DIR': tmp},
+                False,
+            )
+            self.assertEqual(outfiledir, os.path.abspath(run_dir))
+            self.assertEqual(
+                outroot,
+                os.path.join(os.path.abspath(run_dir), 'analysis', 'cb_full_1.0.primary_lens'),
+            )
+            names = [
+                os.path.basename(outroot + ending)
+                for ending in ('.out.hdf5', '.det.hdf5', '.stable.hdf5', '.det.rates')
+            ]
+        self.assertEqual(names, [
+            'cb_full_1.0.primary_lens.out.hdf5',
+            'cb_full_1.0.primary_lens.det.hdf5',
+            'cb_full_1.0.primary_lens.stable.hdf5',
+            'cb_full_1.0.primary_lens.det.rates',
+        ])
+
     def test_missing_lens_id_column_exits(self):
         data = pd.DataFrame({
             'raw_weight': [1.0],
@@ -242,11 +266,12 @@ class TestPrimaryLensRates(unittest.TestCase):
                     '10 1.0 -1.0 0.1 0.1 0.04 lens_present.csv\n'
                     '20 2.0 -2.0 0.1 0.1 0.04 lens_missing.csv\n'
                 )
+            out_path = os.path.join(tmp, 'primary_lens.rates')
             env = os.environ.copy()
             env['PYTHON'] = sys.executable
             result = subprocess.run(
                 [os.path.join(REPO_ROOT, 'scripts', 'run_rates_primary_lens.sh'),
-                 src_index, lens_index],
+                 src_index, lens_index, out_path],
                 check=False, capture_output=True, text=True, env=env,
             )
             direct = subprocess.run(
@@ -255,20 +280,61 @@ class TestPrimaryLensRates(unittest.TestCase):
                  src_csv, '0.04', lens_csv, '0.04'],
                 check=False, capture_output=True, text=True,
             )
+            with open(out_path) as handle:
+                written = handle.read()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(direct.returncode, 0, direct.stderr)
-        lines = result.stdout.splitlines()
+        self.assertEqual(result.stdout, '')
+        lines = written.splitlines()
         self.assertEqual(len(lines), 2)
         self.assertTrue(lines[0].startswith('ID_src '))
         self.assertIn('src_present.csv', lines[1])
-        self.assertNotIn('src_missing.csv', result.stdout)
+        self.assertNotIn('src_missing.csv', written)
         self.assertIn('1 skipped (missing csv)', result.stderr)
+        self.assertIn('wrote ' + out_path, result.stderr)
         self.assertTrue(lines[1].endswith(direct.stdout.strip()))
         # nsource, source_area, nlens follow the lens filename. One companion
         # was dropped, so nlens is 1 and the dark source is still counted.
         fields = lines[1].split()
         self.assertEqual(fields[14], '1')
         self.assertEqual(fields[16], '1')
+        default = os.path.join(
+            REPO_ROOT, 'rates',
+            'binary_src_gulls_surot2d_H2024_V2.primary_lens.rates',
+        )
+        self.assertFalse(os.path.exists(default))
+
+    def test_shell_refuses_to_overwrite_and_names_the_default(self):
+        script = os.path.join(REPO_ROOT, 'scripts', 'run_rates_primary_lens.sh')
+        default_name = 'binary_src_gulls_surot2d_H2024_V2.primary_lens.rates'
+        default = os.path.join(REPO_ROOT, 'rates', default_name)
+        existed = os.path.exists(default)
+        before = open(default).read() if existed else None
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = subprocess.run(
+                [script], cwd=tmp, check=False, capture_output=True, text=True,
+            )
+            sentinel = os.path.join(tmp, 'binary_src_gulls_surot2d_H2024_V2.rates')
+            with open(sentinel, 'w') as handle:
+                handle.write('keep-me\n')
+            refused = subprocess.run(
+                [script, os.path.join(tmp, 'no.sources'), os.path.join(tmp, 'no.lenses'), sentinel],
+                check=False, capture_output=True, text=True,
+            )
+            with open(sentinel) as handle:
+                sentinel_text = handle.read()
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn(default, missing.stderr)
+        self.assertNotIn('wrote ', missing.stderr)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn('refusing to overwrite ' + sentinel, refused.stderr)
+        self.assertNotIn('dropped', refused.stderr)
+        self.assertEqual(sentinel_text, 'keep-me\n')
+        if existed:
+            with open(default) as handle:
+                self.assertEqual(handle.read(), before)
+        else:
+            self.assertFalse(os.path.exists(default))
 
 
 if __name__ == '__main__':

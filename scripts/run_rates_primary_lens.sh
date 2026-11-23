@@ -1,12 +1,12 @@
 #!/bin/bash
-# Build a gulls rates table on stdout, counting only primary lenses.
+# Build a gulls rates table, counting only primary lenses, and write it to a file.
 #
 # Primary-lens-only: calls calc_rate_primary_lens.py, which keeps a lens
 # catalog row only when ID == primary_ID (singles and primaries). Companion
 # rows are dropped from the rate sum. Sources are not filtered.
 #
 # Usage:
-#   scripts/run_rates_primary_lens.sh [sources_list] [lenses_list]
+#   scripts/run_rates_primary_lens.sh [sources_list] [lenses_list] [output_file]
 #
 # With no arguments this still reads gulls_surot2d_H2023.sources and
 # gulls_surot2d_H2023.lenses from the working directory. Catalog paths inside
@@ -14,15 +14,29 @@
 # is not on disk is skipped. Field IDs in the table are the source-list IDs
 # gulls stores as Field.
 #
+# The table is written by this script, not by a shell redirect. The default
+# path is rates/binary_src_gulls_surot2d_H2024_V2.primary_lens.rates under the
+# repository root (the parent of this script's directory). Pass output_file
+# to write somewhere else. An existing file at the destination is left as it
+# is; this script will not overwrite it.
+#
 # Requires python with pandas and numpy on PATH (conda env gulls).
 
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/.." && pwd)
 calc_rate="$here/calc_rate_primary_lens.py"
 sources_list=${1:-gulls_surot2d_H2023.sources}
 lenses_list=${2:-gulls_surot2d_H2023.lenses}
+output=${3:-"$repo/rates/binary_src_gulls_surot2d_H2024_V2.primary_lens.rates"}
 python_bin=${PYTHON:-python}
+
+echo "run_rates_primary_lens.sh: output $output" >&2
+if [[ -e "$output" ]]; then
+	echo "run_rates_primary_lens.sh: refusing to overwrite $output" >&2
+	exit 1
+fi
 
 if [[ ! -f "$sources_list" || ! -f "$lenses_list" ]]; then
 	echo "run_rates_primary_lens.sh: index file not found: $sources_list or $lenses_list" >&2
@@ -37,6 +51,12 @@ if ! command -v "$python_bin" >/dev/null 2>&1; then
 	exit 1
 fi
 
+output_dir=$(dirname "$output")
+mkdir -p "$output_dir"
+tmp=$(mktemp "$output_dir/.primary_lens_rates.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+
+{
 echo "ID_src l_src b_src fa_l_src fa_b_src sa_src file_src ID_lens l_lens b_lens fa_l_lens fa_b_lens sa_lens file_lens nsource source_area nlens lens_area tau tEmean murelmean nevents_per_tile nevents_per_source nevents_per_deg2 source_density"
 
 python3 - "$sources_list" "$lenses_list" << 'PY' | while read -r sidx sl sb sdl sdb ssa sfile lidx ll lb ldl ldb lsa lfile src_abs lens_abs; do
@@ -108,3 +128,20 @@ PY
 	rates=$("$python_bin" "$calc_rate" "$src_abs" "$ssa" "$lens_abs" "$lsa" </dev/null)
 	printf '%s %s\n' "$sidx $sl $sb $sdl $sdb $ssa $sfile $lidx $ll $lb $ldl $ldb $lsa $lfile" "$rates"
 done
+} > "$tmp"
+
+if [[ -e "$output" ]]; then
+	echo "run_rates_primary_lens.sh: refusing to overwrite $output" >&2
+	exit 1
+fi
+if ! ln "$tmp" "$output"; then
+	if [[ -e "$output" ]]; then
+		echo "run_rates_primary_lens.sh: refusing to overwrite $output" >&2
+	else
+		echo "run_rates_primary_lens.sh: could not create $output" >&2
+	fi
+	exit 1
+fi
+rm -f "$tmp"
+trap - EXIT
+echo "run_rates_primary_lens.sh: wrote $output" >&2
